@@ -46,7 +46,7 @@ def get_llm():
             return None
         
         llm = ChatGoogleGenerativeAI(
-            model="gemini-pro",
+            model="gemini-1.5-flash",  # 최신 모델명 (무료, 빠름)
             temperature=0,
             google_api_key=api_key,
             convert_system_message_to_human=True
@@ -75,7 +75,7 @@ def get_llm():
 
 llm = get_llm()
 if llm:
-    st.success("✅ Google Gemini Pro 로드 완료 (무료 할당량 사용)")
+    st.success("✅ Google Gemini 1.5 Flash 로드 완료 (무료 할당량 사용)")
 else:
     st.warning("⚠️ AI 분석 없이 기본 모드로 실행")
 
