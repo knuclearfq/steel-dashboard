@@ -13,71 +13,98 @@ warnings.filterwarnings('ignore')
 st.set_page_config(page_title="철강 설비 AI 대시보드", layout="wide")
 st.title("🤖 철강 설비 AI 에이전트 대시보드")
 
-# --- Gemini LLM 로드 (클라우드 배포용) ---
+# --- Gemini LLM 로드 (여러 모델 시도) ---
 @st.cache_resource
 def get_llm():
-    """Google Gemini LLM 객체를 로드하는 함수"""
+    """Google Gemini LLM 객체를 로드하는 함수 (여러 모델 시도)"""
     print("Gemini LLM 로드 시도...")
+    
     try:
         from langchain_google_genai import ChatGoogleGenerativeAI
-        
-        # Streamlit Secrets 또는 환경변수에서 API 키 가져오기
-        api_key = st.secrets.get("GOOGLE_API_KEY") if "GOOGLE_API_KEY" in st.secrets else os.getenv("GOOGLE_API_KEY")
-        
-        if not api_key:
-            st.error("""
-            ❌ Google Gemini API 키가 설정되지 않았습니다.
-            
-            **API 키 발급 (무료):**
-            1. https://makersuite.google.com/app/apikey 접속
-            2. "Create API Key" 클릭
-            3. API 키 복사 (AIza...로 시작)
-            
-            **Streamlit Cloud 배포 시:**
-            - App 설정 → Secrets → 아래 내용 붙여넣기
-            ```
-            GOOGLE_API_KEY = "AIza..."
-            ```
-            
-            **로컬 테스트 시:**
-            - `.streamlit/secrets.toml` 파일 생성
-            - 위 내용 붙여넣기
-            """)
-            return None
-        
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash",  # 최신 모델명 (무료, 빠름)
-            temperature=0,
-            google_api_key=api_key,
-            convert_system_message_to_human=True
-        )
-        
-        # 간단한 연결 테스트
-        test = llm.invoke("Hi")
-        print(f"✅ Gemini 연결 성공")
-        return llm
-        
     except ImportError:
         st.error("""
         ❌ langchain-google-genai 패키지가 설치되지 않았습니다.
         
-        **해결:**
-        `requirements.txt`에 다음 추가:
+        requirements.txt에 다음 추가:
         ```
         langchain-google-genai>=1.0.0
         ```
         """)
         return None
-    except Exception as e:
-        print(f"Gemini LLM 로드 실패: {e}")
-        st.error(f"❌ Gemini 로드 실패: {e}")
+    
+    # API 키 가져오기
+    api_key = st.secrets.get("GOOGLE_API_KEY") if "GOOGLE_API_KEY" in st.secrets else os.getenv("GOOGLE_API_KEY")
+    
+    if not api_key:
+        st.error("""
+        ❌ Google Gemini API 키가 설정되지 않았습니다.
+        
+        **API 키 발급 (무료):**
+        1. https://aistudio.google.com/app/apikey 접속
+        2. "Create API Key" 클릭
+        3. API 키 복사 (AIza...로 시작)
+        
+        **Streamlit Cloud 배포 시:**
+        Settings → Secrets → 아래 내용 붙여넣기
+        ```
+        GOOGLE_API_KEY = "AIza..."
+        ```
+        """)
         return None
+    
+    # 여러 모델명 시도 (최신 → 구버전 순서)
+    models_to_try = [
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro-latest",
+        "gemini-1.5-pro",
+        "models/gemini-1.5-flash-latest",
+        "models/gemini-1.5-flash",
+    ]
+    
+    for model_name in models_to_try:
+        try:
+            print(f"시도 중: {model_name}")
+            llm = ChatGoogleGenerativeAI(
+                model=model_name,
+                temperature=0,
+                google_api_key=api_key
+            )
+            
+            # 간단한 테스트
+            test = llm.invoke("Hi")
+            print(f"✅ 성공: {model_name}")
+            st.success(f"✅ Google Gemini ({model_name}) 로드 완료!")
+            return llm
+            
+        except Exception as e:
+            print(f"❌ 실패: {model_name} - {e}")
+            continue
+    
+    # 모든 모델 실패
+    st.error(f"""
+    ❌ Gemini 로드 실패: 모든 모델을 시도했지만 실패했습니다.
+    
+    **시도한 모델:**
+    {', '.join(models_to_try)}
+    
+    **해결 방법:**
+    1. API 키가 정확한지 확인
+    2. API 키 사용 가능 여부 확인: https://aistudio.google.com/app/apikey
+    3. 새 API 키 재발급
+    4. requirements.txt 확인:
+       ```
+       langchain-google-genai>=1.0.0
+       google-generativeai>=0.3.0
+       ```
+    
+    **임시 해결:** AI 없이 기본 분석 모드로 사용 가능합니다.
+    """)
+    return None
 
 llm = get_llm()
-if llm:
-    st.success("✅ Google Gemini 1.5 Flash 로드 완료 (무료 할당량 사용)")
-else:
-    st.warning("⚠️ AI 분석 없이 기본 모드로 실행")
+if not llm:
+    st.warning("⚠️ AI 분석 없이 기본 모드로 실행합니다. 데이터 분석은 가능합니다!")
 
 # --- 데이터 로드 ---
 st.divider()
@@ -140,6 +167,7 @@ else:
             )
         })
         st.success("✅ 샘플 데이터 생성!")
+        st.rerun()
 
 if df_facility is not None:
     with st.expander("🔍 데이터 미리보기"):
@@ -178,7 +206,7 @@ if df_facility is not None:
         placeholder="예: wat_unit의 월별 추이를 보여줘"
     )
     
-    if st.button("🚀 AI 분석", type="primary"):
+    if st.button("🚀 분석", type="primary"):
         if user_question:
             # 질문 유형 분석
             is_time_series = any(kw in user_question for kw in ["월별", "추이", "trend", "변화", "그래프"])
@@ -209,12 +237,10 @@ if df_facility is not None:
             
             # 간단한 질문 직접 처리
             if "행" in user_question or "row" in user_question.lower():
-                answer = f"데이터 행 수: **{len(df_facility):,}개**"
-                st.success(answer)
+                st.success(f"데이터 행 수: **{len(df_facility):,}개**")
             
             elif "컬럼" in user_question:
-                answer = f"컬럼: {', '.join(df_facility.columns.tolist())}"
-                st.success(answer)
+                st.success(f"컬럼: {', '.join(df_facility.columns.tolist())}")
             
             elif "평균" in user_question and mentioned_col:
                 avg = df_facility[mentioned_col].mean()
@@ -240,7 +266,7 @@ if df_facility is not None:
                         pivot = multi.pivot(index='month', columns=group_col, values=mentioned_col)
                         st.dataframe(pivot)
                     
-                    # 계열별 인사이트
+                    # AI 인사이트 (LLM 있을 때만)
                     if llm:
                         with st.spinner("AI 인사이트 생성 중..."):
                             try:
@@ -252,8 +278,8 @@ if df_facility is not None:
 """
                                 insight = llm.invoke(prompt)
                                 st.info(f"**🎯 AI 인사이트:**\n\n{insight.content}")
-                            except:
-                                pass
+                            except Exception as e:
+                                st.warning(f"AI 인사이트 생성 실패: {e}")
                 
                 else:
                     # 단일 계열
@@ -293,8 +319,8 @@ if df_facility is not None:
 """
                                 insight = llm.invoke(prompt)
                                 st.success(f"**AI 분석:**\n\n{insight.content}")
-                            except:
-                                pass
+                            except Exception as e:
+                                st.warning(f"AI 분석 실패: {e}")
             
             else:
                 st.warning("질문을 이해하지 못했습니다. 더 구체적으로 질문해주세요.")
@@ -329,4 +355,4 @@ if df_facility is not None:
             st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
-st.caption("🔧 철강 설비 AI 대시보드 v7.0 | Streamlit + Gemini")
+st.caption("🔧 철강 설비 AI 대시보드 v7.1 | Streamlit + Gemini")
