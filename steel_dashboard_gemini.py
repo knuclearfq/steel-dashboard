@@ -36,7 +36,7 @@ def log_error(error_type, error_msg, details=None):
     return error_entry
 
 # --- 분석 히스토리 추가 함수 ---
-def add_to_history(question, result_type, figure=None, data=None, insights=None, code=None):
+def add_to_history(question, result_type, figure=None, data=None, insights=None, code=None, data_code=None):
     """분석 결과를 히스토리에 추가"""
     history_entry = {
         "id": str(uuid.uuid4()),  # 고유 ID 생성
@@ -46,7 +46,8 @@ def add_to_history(question, result_type, figure=None, data=None, insights=None,
         "figure": figure,
         "data": data.to_dict() if data is not None else None,
         "insights": insights,
-        "code": code
+        "code": code,
+        "data_code": data_code
     }
     st.session_state.analysis_history.append(history_entry)
 
@@ -461,6 +462,124 @@ if df_facility is not None:
                         with st.expander("📊 계열별 데이터 테이블"):
                             pivot = multi.pivot(index=x_label, columns=group_col, values=mentioned_col)
                             st.dataframe(pivot)
+                            
+                            st.markdown("---")
+                            st.markdown("#### 🔄 데이터 처리 프로세스")
+                            
+                            process_steps = f"""
+**1단계: 원본 데이터 로드**
+- 파일: CSV 업로드 또는 샘플 데이터
+- 행 수: {len(df_facility):,}개
+- 날짜 컬럼: `{date_col}`
+- 분석 컬럼: `{mentioned_col}`
+- 그룹 컬럼: `{group_col}`
+
+**2단계: 이상치 제거** {'✅ 적용됨' if use_outlier_removal else '❌ 적용 안 됨'}
+{f"- 방법: {outlier_method}" if use_outlier_removal else ""}
+{f"- 제거된 행: {removed_count:,}개 ({removed_count/len(df_facility)*100:.1f}%)" if use_outlier_removal and removed_count > 0 else ""}
+{f"- 남은 행: {len(temp_df):,}개" if use_outlier_removal else ""}
+
+**3단계: 시간 단위 변환**
+- 입력: 날짜 컬럼 (`{date_col}`)
+- 변환: {time_unit_kr} 단위로 그룹화
+- 결과: `time_group` 컬럼 생성
+
+**4단계: 그룹별 집계**
+- 그룹: `time_group` + `{group_col}`
+- 집계 방법: 평균 (mean)
+- 집계 컬럼: `{mentioned_col}`
+- 결과 행 수: {len(multi):,}개
+
+**5단계: 피벗 테이블 생성**
+- 인덱스: {x_label}
+- 컬럼: {group_col}
+- 값: {mentioned_col} 평균
+- 최종 크기: {len(pivot)} 행 × {len(pivot.columns)} 열
+"""
+                            st.markdown(process_steps)
+                            
+                            st.markdown("#### 💻 데이터 처리 코드")
+                            
+                            data_code = f"""import pandas as pd
+
+# 1단계: 원본 데이터 로드
+df = pd.read_csv('your_file.csv')
+print(f"원본 데이터: {{len(df):,}}행")
+
+# 날짜 컬럼 변환
+df['{date_col}'] = pd.to_datetime(df['{date_col}'])
+"""
+                            
+                            if use_outlier_removal:
+                                if outlier_method == 'iqr':
+                                    data_code += f"""
+# 2단계: IQR 방법으로 이상치 제거
+Q1 = df['{mentioned_col}'].quantile(0.25)
+Q3 = df['{mentioned_col}'].quantile(0.75)
+IQR = Q3 - Q1
+lower_bound = Q1 - {outlier_threshold} * IQR
+upper_bound = Q3 + {outlier_threshold} * IQR
+
+df_clean = df[(df['{mentioned_col}'] >= lower_bound) & 
+              (df['{mentioned_col}'] <= upper_bound)].copy()
+print(f"이상치 제거 후: {{len(df_clean):,}}행 ({{len(df) - len(df_clean):,}}개 제거)")
+"""
+                                elif outlier_method == 'zscore':
+                                    data_code += f"""
+# 2단계: Z-Score 방법으로 이상치 제거
+import numpy as np
+mean = df['{mentioned_col}'].mean()
+std = df['{mentioned_col}'].std()
+z_scores = np.abs((df['{mentioned_col}'] - mean) / std)
+
+df_clean = df[z_scores < {outlier_threshold}].copy()
+print(f"이상치 제거 후: {{len(df_clean):,}}행 ({{len(df) - len(df_clean):,}}개 제거)")
+"""
+                                else:
+                                    data_code += f"""
+# 2단계: Percentile 방법으로 이상치 제거
+lower_bound = df['{mentioned_col}'].quantile({outlier_threshold / 100})
+upper_bound = df['{mentioned_col}'].quantile({(100 - outlier_threshold) / 100})
+
+df_clean = df[(df['{mentioned_col}'] >= lower_bound) & 
+              (df['{mentioned_col}'] <= upper_bound)].copy()
+print(f"이상치 제거 후: {{len(df_clean):,}}행 ({{len(df) - len(df_clean):,}}개 제거)")
+"""
+                                data_code += f"""
+df = df_clean  # 정제된 데이터 사용
+"""
+                            else:
+                                data_code += f"""
+# 2단계: 이상치 제거 안 함
+df_clean = df.copy()
+"""
+                            
+                            if time_unit == 'day':
+                                data_code += f"""
+# 3단계: 일별 단위로 변환
+df['time_group'] = df['{date_col}'].dt.date
+"""
+                            else:
+                                data_code += f"""
+# 3단계: 월별 단위로 변환
+df['time_group'] = df['{date_col}'].dt.month
+"""
+                            
+                            data_code += f"""
+# 4단계: 그룹별 평균 계산
+grouped_data = df.groupby(['time_group', '{group_col}'])['{mentioned_col}'].mean().reset_index()
+grouped_data.columns = ['{x_label}', '{group_col}', '{mentioned_col}']
+print(f"그룹별 집계: {{len(grouped_data):,}}행")
+
+# 5단계: 피벗 테이블 생성
+pivot_table = grouped_data.pivot(index='{x_label}', 
+                                  columns='{group_col}', 
+                                  values='{mentioned_col}')
+print(f"피벗 테이블: {{len(pivot_table)}}행 × {{len(pivot_table.columns)}}열")
+print(pivot_table)
+"""
+                            
+                            st.code(data_code, language="python")
                         
                         with st.expander("💻 그래프 생성 코드"):
                             code = f"""import plotly.express as px
@@ -548,13 +667,92 @@ fig.update_layout(legend_title='{group_col}', height=500)
 
 fig.show()"""
                         
+                        # 데이터 처리 코드 생성
+                        multi_data_code = f"""import pandas as pd
+
+# 1단계: 원본 데이터 로드
+df = pd.read_csv('your_file.csv')
+print(f"원본 데이터: {{len(df):,}}행")
+
+# 날짜 컬럼 변환
+df['{date_col}'] = pd.to_datetime(df['{date_col}'])
+"""
+                        
+                        if use_outlier_removal:
+                            if outlier_method == 'iqr':
+                                multi_data_code += f"""
+# 2단계: IQR 방법으로 이상치 제거
+Q1 = df['{mentioned_col}'].quantile(0.25)
+Q3 = df['{mentioned_col}'].quantile(0.75)
+IQR = Q3 - Q1
+lower_bound = Q1 - {outlier_threshold} * IQR
+upper_bound = Q3 + {outlier_threshold} * IQR
+
+df_clean = df[(df['{mentioned_col}'] >= lower_bound) & 
+              (df['{mentioned_col}'] <= upper_bound)].copy()
+print(f"이상치 제거 후: {{len(df_clean):,}}행 ({{len(df) - len(df_clean):,}}개 제거)")
+
+df = df_clean
+"""
+                            elif outlier_method == 'zscore':
+                                multi_data_code += f"""
+# 2단계: Z-Score 방법으로 이상치 제거
+import numpy as np
+mean = df['{mentioned_col}'].mean()
+std = df['{mentioned_col}'].std()
+z_scores = np.abs((df['{mentioned_col}'] - mean) / std)
+
+df_clean = df[z_scores < {outlier_threshold}].copy()
+print(f"이상치 제거 후: {{len(df_clean):,}}행 ({{len(df) - len(df_clean):,}}개 제거)")
+
+df = df_clean
+"""
+                            else:
+                                multi_data_code += f"""
+# 2단계: Percentile 방법으로 이상치 제거
+lower_bound = df['{mentioned_col}'].quantile({outlier_threshold / 100})
+upper_bound = df['{mentioned_col}'].quantile({(100 - outlier_threshold) / 100})
+
+df_clean = df[(df['{mentioned_col}'] >= lower_bound) & 
+              (df['{mentioned_col}'] <= upper_bound)].copy()
+print(f"이상치 제거 후: {{len(df_clean):,}}행 ({{len(df) - len(df_clean):,}}개 제거)")
+
+df = df_clean
+"""
+                        
+                        if time_unit == 'day':
+                            multi_data_code += f"""
+# 3단계: 일별 단위로 변환
+df['time_group'] = df['{date_col}'].dt.date
+"""
+                        else:
+                            multi_data_code += f"""
+# 3단계: 월별 단위로 변환
+df['time_group'] = df['{date_col}'].dt.month
+"""
+                        
+                        multi_data_code += f"""
+# 4단계: 그룹별 평균 계산
+grouped_data = df.groupby(['time_group', '{group_col}'])['{mentioned_col}'].mean().reset_index()
+grouped_data.columns = ['{x_label}', '{group_col}', '{mentioned_col}']
+print(f"그룹별 집계: {{len(grouped_data):,}}행")
+
+# 5단계: 피벗 테이블 생성
+pivot_table = grouped_data.pivot(index='{x_label}', 
+                                  columns='{group_col}', 
+                                  values='{mentioned_col}')
+print(f"피벗 테이블: {{len(pivot_table)}}행 × {{len(pivot_table.columns)}}열")
+print(pivot_table)
+"""
+                        
                         add_to_history(
                             question=user_question,
                             result_type=f"계열별_{time_unit_kr}_추이",
                             figure=fig,
                             data=multi,
                             insights=insights_text,
-                            code=multi_code
+                            code=multi_code,
+                            data_code=multi_data_code
                         )
                     
                     else:
@@ -579,6 +777,115 @@ fig.show()"""
                         
                         with st.expander("📊 데이터 테이블"):
                             st.dataframe(time_data)
+                            
+                            st.markdown("---")
+                            st.markdown("#### 🔄 데이터 처리 프로세스")
+                            
+                            process_steps = f"""
+**1단계: 원본 데이터 로드**
+- 파일: CSV 업로드 또는 샘플 데이터
+- 행 수: {len(df_facility):,}개
+- 날짜 컬럼: `{date_col}`
+- 분석 컬럼: `{mentioned_col}`
+
+**2단계: 이상치 제거** {'✅ 적용됨' if use_outlier_removal else '❌ 적용 안 됨'}
+{f"- 방법: {outlier_method}" if use_outlier_removal else ""}
+{f"- 제거된 행: {removed_count:,}개 ({removed_count/len(df_facility)*100:.1f}%)" if use_outlier_removal and removed_count > 0 else ""}
+{f"- 남은 행: {len(temp_df):,}개" if use_outlier_removal else ""}
+
+**3단계: 시간 단위 변환**
+- 입력: 날짜 컬럼 (`{date_col}`)
+- 변환: {time_unit_kr} 단위로 그룹화
+- 결과: `time_group` 컬럼 생성
+
+**4단계: 시간별 집계**
+- 그룹: `time_group`
+- 집계 방법: 평균 (mean)
+- 집계 컬럼: `{mentioned_col}`
+- 결과 행 수: {len(time_data):,}개
+
+**5단계: 최종 데이터**
+- 컬럼: [{x_label}, {mentioned_col}]
+- 크기: {len(time_data)} 행 × 2 열
+"""
+                            st.markdown(process_steps)
+                            
+                            st.markdown("#### 💻 데이터 처리 코드")
+                            
+                            data_code = f"""import pandas as pd
+
+# 1단계: 원본 데이터 로드
+df = pd.read_csv('your_file.csv')
+print(f"원본 데이터: {{len(df):,}}행")
+
+# 날짜 컬럼 변환
+df['{date_col}'] = pd.to_datetime(df['{date_col}'])
+"""
+                            
+                            if use_outlier_removal:
+                                if outlier_method == 'iqr':
+                                    data_code += f"""
+# 2단계: IQR 방법으로 이상치 제거
+Q1 = df['{mentioned_col}'].quantile(0.25)
+Q3 = df['{mentioned_col}'].quantile(0.75)
+IQR = Q3 - Q1
+lower_bound = Q1 - {outlier_threshold} * IQR
+upper_bound = Q3 + {outlier_threshold} * IQR
+
+df_clean = df[(df['{mentioned_col}'] >= lower_bound) & 
+              (df['{mentioned_col}'] <= upper_bound)].copy()
+print(f"이상치 제거 후: {{len(df_clean):,}}행 ({{len(df) - len(df_clean):,}}개 제거)")
+"""
+                                elif outlier_method == 'zscore':
+                                    data_code += f"""
+# 2단계: Z-Score 방법으로 이상치 제거
+import numpy as np
+mean = df['{mentioned_col}'].mean()
+std = df['{mentioned_col}'].std()
+z_scores = np.abs((df['{mentioned_col}'] - mean) / std)
+
+df_clean = df[z_scores < {outlier_threshold}].copy()
+print(f"이상치 제거 후: {{len(df_clean):,}}행 ({{len(df) - len(df_clean):,}}개 제거)")
+"""
+                                else:
+                                    data_code += f"""
+# 2단계: Percentile 방법으로 이상치 제거
+lower_bound = df['{mentioned_col}'].quantile({outlier_threshold / 100})
+upper_bound = df['{mentioned_col}'].quantile({(100 - outlier_threshold) / 100})
+
+df_clean = df[(df['{mentioned_col}'] >= lower_bound) & 
+              (df['{mentioned_col}'] <= upper_bound)].copy()
+print(f"이상치 제거 후: {{len(df_clean):,}}행 ({{len(df) - len(df_clean):,}}개 제거)")
+"""
+                                data_code += f"""
+df = df_clean  # 정제된 데이터 사용
+"""
+                            else:
+                                data_code += f"""
+# 2단계: 이상치 제거 안 함
+df_clean = df.copy()
+"""
+                            
+                            if time_unit == 'day':
+                                data_code += f"""
+# 3단계: 일별 단위로 변환
+df['time_group'] = df['{date_col}'].dt.date
+"""
+                            else:
+                                data_code += f"""
+# 3단계: 월별 단위로 변환
+df['time_group'] = df['{date_col}'].dt.month
+"""
+                            
+                            data_code += f"""
+# 4단계: 시간별 평균 계산
+time_data = df.groupby('time_group')['{mentioned_col}'].mean().reset_index()
+time_data.columns = ['{x_label}', '{mentioned_col}']
+print(f"시간별 집계: {{len(time_data):,}}행")
+print(time_data)
+"""
+                            
+                            st.code(data_code, language="python")
                         
                         with st.expander("💻 그래프 생성 코드"):
                             code = f"""import plotly.express as px
@@ -639,13 +946,86 @@ fig.update_layout(height=500)
 
 fig.show()"""
                         
+                        # 데이터 처리 코드 생성
+                        single_data_code = f"""import pandas as pd
+
+# 1단계: 원본 데이터 로드
+df = pd.read_csv('your_file.csv')
+print(f"원본 데이터: {{len(df):,}}행")
+
+# 날짜 컬럼 변환
+df['{date_col}'] = pd.to_datetime(df['{date_col}'])
+"""
+                        
+                        if use_outlier_removal:
+                            if outlier_method == 'iqr':
+                                single_data_code += f"""
+# 2단계: IQR 방법으로 이상치 제거
+Q1 = df['{mentioned_col}'].quantile(0.25)
+Q3 = df['{mentioned_col}'].quantile(0.75)
+IQR = Q3 - Q1
+lower_bound = Q1 - {outlier_threshold} * IQR
+upper_bound = Q3 + {outlier_threshold} * IQR
+
+df_clean = df[(df['{mentioned_col}'] >= lower_bound) & 
+              (df['{mentioned_col}'] <= upper_bound)].copy()
+print(f"이상치 제거 후: {{len(df_clean):,}}행 ({{len(df) - len(df_clean):,}}개 제거)")
+
+df = df_clean
+"""
+                            elif outlier_method == 'zscore':
+                                single_data_code += f"""
+# 2단계: Z-Score 방법으로 이상치 제거
+import numpy as np
+mean = df['{mentioned_col}'].mean()
+std = df['{mentioned_col}'].std()
+z_scores = np.abs((df['{mentioned_col}'] - mean) / std)
+
+df_clean = df[z_scores < {outlier_threshold}].copy()
+print(f"이상치 제거 후: {{len(df_clean):,}}행 ({{len(df) - len(df_clean):,}}개 제거)")
+
+df = df_clean
+"""
+                            else:
+                                single_data_code += f"""
+# 2단계: Percentile 방법으로 이상치 제거
+lower_bound = df['{mentioned_col}'].quantile({outlier_threshold / 100})
+upper_bound = df['{mentioned_col}'].quantile({(100 - outlier_threshold) / 100})
+
+df_clean = df[(df['{mentioned_col}'] >= lower_bound) & 
+              (df['{mentioned_col}'] <= upper_bound)].copy()
+print(f"이상치 제거 후: {{len(df_clean):,}}행 ({{len(df) - len(df_clean):,}}개 제거)")
+
+df = df_clean
+"""
+                        
+                        if time_unit == 'day':
+                            single_data_code += f"""
+# 3단계: 일별 단위로 변환
+df['time_group'] = df['{date_col}'].dt.date
+"""
+                        else:
+                            single_data_code += f"""
+# 3단계: 월별 단위로 변환
+df['time_group'] = df['{date_col}'].dt.month
+"""
+                        
+                        single_data_code += f"""
+# 4단계: 시간별 평균 계산
+time_data = df.groupby('time_group')['{mentioned_col}'].mean().reset_index()
+time_data.columns = ['{x_label}', '{mentioned_col}']
+print(f"시간별 집계: {{len(time_data):,}}행")
+print(time_data)
+"""
+                        
                         add_to_history(
                             question=user_question,
                             result_type=f"{time_unit_kr}_추이",
                             figure=fig,
                             data=time_data,
                             insights=insights_text,
-                            code=single_code
+                            code=single_code,
+                            data_code=single_data_code
                         )
                 
                 # === 우선순위 2: 간단한 통계 ===
@@ -724,6 +1104,13 @@ fig.show()"""
                 if entry['data'] is not None:
                     st.write("**데이터:**")
                     st.dataframe(pd.DataFrame(entry['data']))
+                    
+                    # 데이터 처리 코드 표시
+                    with st.expander("💻 데이터 처리 코드", expanded=False):
+                        if entry.get('data_code'):
+                            st.code(entry['data_code'], language="python")
+                        else:
+                            st.info("데이터 처리 코드가 저장되지 않았습니다.")
                 
                 if entry['insights']:
                     st.write("**인사이트:**")
@@ -757,4 +1144,4 @@ if len(st.session_state.error_logs) > 0:
             st.rerun()
 
 st.divider()
-st.caption("🔧 철강 설비 AI 대시보드 v10.2 | 키워드 감지 + 중복 ID 해결 + 코드 표시 | Gemini 2.5")
+st.caption("🔧 철강 설비 AI 대시보드 v10.3 | 키워드 감지 + 코드 표시 + 데이터 프로세스 | Gemini 2.5")
