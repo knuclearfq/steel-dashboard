@@ -316,8 +316,8 @@ if df_facility is not None:
         "Q1": "prod_wgt 평균은?",
         "Q2": "prod_wgt 일별 추이",
         "Q3": "md_shft별 prod_wgt 일별 추이",
-        "Q4": "prod_wgt 월별 추이",
-        "Q5": "md_shft별 prod_wgt 월별 추이"
+        "Q4": "prod_wgt 1월부터 6월까지 월별 추이",
+        "Q5": "md_shft별 prod_wgt 월별 막대그래프"
     }
     
     st.write("**💡 샘플 질문:**")
@@ -329,7 +329,7 @@ if df_facility is not None:
     user_question = st.text_input(
         "질문:",
         value=st.session_state.get('sample_question', ''),
-        placeholder="예: md_shft별로 prod_wgt 일별 평균 추이 그래프 (또는 월별)"
+        placeholder="예: md_shft별로 prod_wgt 1월부터 8월까지 월별 막대그래프"
     )
     
     if st.button("🚀 분석", type="primary"):
@@ -496,9 +496,73 @@ if df_facility is not None:
                         temp_df['time_group'] = temp_df[date_col].dt.month
                         x_label = "월"
                     
-                    # 기간 필터링
-                    if "1월" in user_question and "10월" in user_question and time_unit == "month":
-                        temp_df = temp_df[temp_df['time_group'].between(1, 10)]
+                    # === 범위 필터링 (개선) ===
+                    import re
+                    
+                    range_filtered = False
+                    
+                    if time_unit == "month":
+                        # 월 범위 패턴 감지
+                        # 패턴 1: "1월부터 8월까지", "1월에서 8월", "1월~8월"
+                        month_range_patterns = [
+                            r'(\d{1,2})월?\s*(?:부터|에서|~|-)\s*(\d{1,2})월?(?:까지)?',
+                            r'(\d{1,2})\s*~\s*(\d{1,2})월',
+                            r'(\d{1,2})-(\d{1,2})월'
+                        ]
+                        
+                        for pattern in month_range_patterns:
+                            match = re.search(pattern, user_question)
+                            if match:
+                                start_month = int(match.group(1))
+                                end_month = int(match.group(2))
+                                
+                                if 1 <= start_month <= 12 and 1 <= end_month <= 12:
+                                    temp_df = temp_df[temp_df['time_group'].between(start_month, end_month)]
+                                    range_filtered = True
+                                    st.success(f"📅 범위 필터링: {start_month}월 ~ {end_month}월")
+                                    break
+                    
+                    elif time_unit == "day":
+                        # 날짜 범위 패턴 감지
+                        # 패턴 1: "2024-01-01부터 2024-08-31까지"
+                        date_range_pattern = r'(\d{4}-\d{2}-\d{2})\s*(?:부터|에서|~|-)\s*(\d{4}-\d{2}-\d{2})(?:까지)?'
+                        match = re.search(date_range_pattern, user_question)
+                        
+                        if match:
+                            try:
+                                start_date = pd.to_datetime(match.group(1)).date()
+                                end_date = pd.to_datetime(match.group(2)).date()
+                                
+                                temp_df = temp_df[(temp_df['time_group'] >= start_date) & 
+                                                 (temp_df['time_group'] <= end_date)]
+                                range_filtered = True
+                                st.success(f"📅 범위 필터링: {start_date} ~ {end_date}")
+                            except:
+                                pass
+                        
+                        # 패턴 2: "1월 1일부터 8월 31일까지" (간단한 버전)
+                        if not range_filtered:
+                            simple_date_pattern = r'(\d{1,2})월\s*(\d{1,2})일\s*(?:부터|에서)?\s*(?:~|-)?\s*(\d{1,2})월\s*(\d{1,2})일'
+                            match = re.search(simple_date_pattern, user_question)
+                            
+                            if match:
+                                try:
+                                    start_month = int(match.group(1))
+                                    start_day = int(match.group(2))
+                                    end_month = int(match.group(3))
+                                    end_day = int(match.group(4))
+                                    
+                                    # 현재 년도 사용
+                                    current_year = temp_df[date_col].dt.year.iloc[0]
+                                    start_date = pd.Timestamp(year=current_year, month=start_month, day=start_day).date()
+                                    end_date = pd.Timestamp(year=current_year, month=end_month, day=end_day).date()
+                                    
+                                    temp_df = temp_df[(temp_df['time_group'] >= start_date) & 
+                                                     (temp_df['time_group'] <= end_date)]
+                                    range_filtered = True
+                                    st.success(f"📅 범위 필터링: {start_date} ~ {end_date}")
+                                except:
+                                    pass
                     
                     if is_multi_series and group_col:
                         # === 다중 계열 분석 ===
@@ -1300,8 +1364,21 @@ print(time_data)
                     log_error("QuestionParseError", "질문 파싱 실패", user_question)
                     st.info("""
 **💡 질문 예시:**
+
+**시간 단위:**
 - "md_shft별로 prod_wgt **일별** 추이 그래프"
 - "prod_wgt **월별** 추이"
+
+**그래프 타입:**
+- "prod_wgt 월별 **막대그래프**"
+- "md_shft별 **파이차트**"
+
+**범위 지정:**
+- "prod_wgt **1월부터 8월까지** 월별 추이"
+- "wat_unit **3월~7월** 막대그래프"
+- "prod_wgt **2024-01-01부터 2024-06-30까지** 일별 추이"
+
+**기타:**
 - "prod_wgt 평균은?"
                     """)
                 
@@ -1382,4 +1459,4 @@ if len(st.session_state.error_logs) > 0:
             st.rerun()
 
 st.divider()
-st.caption("🔧 철강 설비 AI 대시보드 v11.0 | 모든 그래프 타입 지원 + 자동 감지 | Gemini 2.5")
+st.caption("🔧 철강 설비 AI 대시보드 v11.1 Final | 모든 그래프 타입 + 범위 필터링 | Gemini 2.5")
