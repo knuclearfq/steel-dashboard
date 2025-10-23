@@ -7,6 +7,7 @@ import warnings
 import json
 import re
 import traceback
+import uuid
 from datetime import datetime
 
 # 경고 메시지 무시
@@ -38,6 +39,7 @@ def log_error(error_type, error_msg, details=None):
 def add_to_history(question, result_type, figure=None, data=None, insights=None):
     """분석 결과를 히스토리에 추가"""
     history_entry = {
+        "id": str(uuid.uuid4()),  # 고유 ID 생성
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "question": question,
         "result_type": result_type,
@@ -220,9 +222,7 @@ else:
         prod_wgt_values = []
         for date in dates:
             month = date.month
-            # 월별 패턴
             base_value = 1500 + (month - 6) * 50
-            # 이상치 추가 (5% 확률)
             if np.random.random() > 0.95:
                 prod_wgt_values.append(base_value + np.random.uniform(1000, 2000))
             else:
@@ -321,49 +321,58 @@ if df_facility is not None:
     st.write("**💡 샘플 질문:**")
     cols = st.columns(5)
     for idx, (key, q) in enumerate(sample_qs.items()):
-        if cols[idx].button(key, help=q):
+        if cols[idx].button(key, help=q, key=f"sample_q_{idx}"):
             st.session_state.sample_question = q
     
     user_question = st.text_input(
         "질문:",
         value=st.session_state.get('sample_question', ''),
-        placeholder="예: md_shft별로 prod_wgt 일별 평균 추이를 선그래프로"
+        placeholder="예: md_shft별로 prod_wgt 일별 평균 추이 그래프 (또는 월별)"
     )
     
     if st.button("🚀 분석", type="primary"):
         if user_question:
             try:
-                # === 질문 분석 ===
+                # === 질문 분석 (개선된 로직) ===
+                user_question_lower = user_question.lower()
+                
                 graph_keywords = ["그래프", "선그래프", "막대그래프", "차트", "추이", "변화", "표현", "그려", "시각화"]
                 
-                # ⭐ 시간 단위 명확히 구분
-                daily_keywords = ["일별", "날짜별", "daily", "day", "date"]
-                monthly_keywords = ["월별", "monthly", "month"]
+                # ⭐ 시간 단위 키워드 명확히 분리
+                daily_keywords = ["일별", "날짜별", "daily", "day by day"]
+                monthly_keywords = ["월별", "monthly", "month by month"]
                 
-                is_daily = any(kw in user_question for kw in daily_keywords)
-                is_monthly = any(kw in user_question for kw in monthly_keywords)
+                # 키워드 감지 (정확히)
+                has_daily = any(kw in user_question_lower for kw in daily_keywords)
+                has_monthly = any(kw in user_question_lower for kw in monthly_keywords)
                 
-                # 일별도 월별도 아니면 기본적으로 추이 키워드로 판단
+                # 우선순위: 명시적 키워드 > 기본값(일별)
+                if has_monthly and not has_daily:
+                    # 월별만 있음
+                    time_unit = "month"
+                    time_unit_kr = "월별"
+                    detected_reason = f"질문에 '{[kw for kw in monthly_keywords if kw in user_question_lower][0]}' 키워드 발견"
+                elif has_daily:
+                    # 일별 있음 (또는 둘 다 있으면 일별 우선)
+                    time_unit = "day"
+                    time_unit_kr = "일별"
+                    detected_reason = f"질문에 '{[kw for kw in daily_keywords if kw in user_question_lower][0]}' 키워드 발견"
+                else:
+                    # 키워드 없음 - 기본값 일별
+                    time_unit = "day"
+                    time_unit_kr = "일별"
+                    detected_reason = "키워드 없음 - 기본값 사용"
+                
                 time_keywords = daily_keywords + monthly_keywords + ["추이", "변화", "시계열"]
-                is_time_series = any(kw in user_question for kw in time_keywords)
+                is_time_series = any(kw in user_question_lower for kw in time_keywords)
                 
                 multi_keywords = ["계열", "조로", "구분", "별로", "분리", "그룹별", "나누어", "각각"]
                 
-                wants_graph = any(kw in user_question for kw in graph_keywords)
-                is_multi_series = any(kw in user_question for kw in multi_keywords)
+                wants_graph = any(kw in user_question_lower for kw in graph_keywords)
+                is_multi_series = any(kw in user_question_lower for kw in multi_keywords)
                 
-                # 시간 단위 결정 (우선순위: 일별 > 월별)
-                if is_daily:
-                    time_unit = "day"
-                    time_unit_kr = "일별"
-                elif is_monthly:
-                    time_unit = "month"
-                    time_unit_kr = "월별"
-                else:
-                    time_unit = "day"  # 기본값은 일별
-                    time_unit_kr = "일별"
-                
-                st.info(f"🔍 감지된 시간 단위: **{time_unit_kr}** (질문에 '{time_unit_kr}' 키워드 {'발견' if (is_daily or is_monthly) else '없음 - 기본값 사용'})")
+                # 감지 결과 표시
+                st.info(f"🔍 감지된 시간 단위: **{time_unit_kr}** ({detected_reason})")
                 
                 # 날짜 컬럼 찾기
                 date_col = None
@@ -379,7 +388,7 @@ if df_facility is not None:
                 # 분석 컬럼 찾기
                 mentioned_col = None
                 for col in numeric_cols:
-                    if col in user_question.lower():
+                    if col in user_question_lower:
                         mentioned_col = col
                         break
                 
@@ -392,7 +401,7 @@ if df_facility is not None:
                 if is_multi_series:
                     cat_cols = df_facility.select_dtypes(include=['object']).columns
                     for col in cat_cols:
-                        if col in user_question.lower():
+                        if col in user_question_lower:
                             group_col = col
                             break
                 
@@ -438,13 +447,15 @@ if df_facility is not None:
                         multi = temp_df.groupby(['time_group', group_col])[mentioned_col].mean().reset_index()
                         multi.columns = [x_label, group_col, mentioned_col]
                         
+                        # 고유 key로 차트 생성
+                        chart_key = f"chart_{uuid.uuid4().hex[:8]}"
                         fig = px.line(multi, x=x_label, y=mentioned_col, color=group_col,
                                     markers=True, 
                                     title=f'{mentioned_col}의 {group_col}별 {time_unit_kr} 평균 추이{"(이상치 제거)" if use_outlier_removal else ""}')
                         fig.update_xaxes(title=x_label)
                         fig.update_yaxes(title=f"{mentioned_col} 평균")
                         fig.update_layout(legend_title=group_col, height=500)
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, use_container_width=True, key=chart_key)
                         
                         with st.expander("📊 계열별 데이터 테이블"):
                             pivot = multi.pivot(index=x_label, columns=group_col, values=mentioned_col)
@@ -510,13 +521,15 @@ if df_facility is not None:
                         time_data = temp_df.groupby('time_group')[mentioned_col].mean().reset_index()
                         time_data.columns = [x_label, mentioned_col]
                         
+                        # 고유 key로 차트 생성
+                        chart_key = f"chart_{uuid.uuid4().hex[:8]}"
                         fig = px.line(time_data, x=x_label, y=mentioned_col,
                                     markers=True, 
                                     title=f'{mentioned_col}의 {time_unit_kr} 평균 추이{"(이상치 제거)" if use_outlier_removal else ""}')
                         fig.update_xaxes(title=x_label)
                         fig.update_yaxes(title=f"{mentioned_col} 평균")
                         fig.update_layout(height=500)
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, use_container_width=True, key=chart_key)
                         
                         with st.expander("📊 데이터 테이블"):
                             st.dataframe(time_data)
@@ -547,7 +560,7 @@ if df_facility is not None:
                         )
                 
                 # === 우선순위 2: 간단한 통계 ===
-                elif "행" in user_question or "row" in user_question.lower():
+                elif "행" in user_question or "row" in user_question_lower:
                     result = f"📊 데이터 행 수: **{len(df_facility):,}개**"
                     st.success(result)
                     add_to_history(user_question, "통계", insights=result)
@@ -608,7 +621,9 @@ if df_facility is not None:
                 st.write(f"**분석 유형:** {entry['result_type']}")
                 
                 if entry['figure'] is not None:
-                    st.plotly_chart(entry['figure'], use_container_width=True)
+                    # 고유 key로 히스토리 차트 표시
+                    history_key = f"history_{entry['id']}_{idx}"
+                    st.plotly_chart(entry['figure'], use_container_width=True, key=history_key)
                 
                 if entry['data'] is not None:
                     st.write("**데이터:**")
@@ -620,7 +635,7 @@ if df_facility is not None:
         
         col1, col2 = st.columns([1, 5])
         with col1:
-            if st.button("🗑️ 히스토리 초기화"):
+            if st.button("🗑️ 히스토리 초기화", key="clear_history"):
                 st.session_state.analysis_history = []
                 st.rerun()
 
@@ -641,9 +656,9 @@ if len(st.session_state.error_logs) > 0:
             with st.expander(f"상세 정보 {idx}"):
                 st.code(error['details'], language="python")
         
-        if st.button("🗑️ 에러 로그 초기화"):
+        if st.button("🗑️ 에러 로그 초기화", key="clear_errors"):
             st.session_state.error_logs = []
             st.rerun()
 
 st.divider()
-st.caption("🔧 철강 설비 AI 대시보드 v10.0 | 일별/월별 구분 + 히스토리 저장 | Gemini 2.5")
+st.caption("🔧 철강 설비 AI 대시보드 v10.1 Final | 키워드 감지 수정 + 중복 ID 해결 | Gemini 2.5")
