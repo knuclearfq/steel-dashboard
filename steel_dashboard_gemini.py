@@ -36,7 +36,7 @@ def log_error(error_type, error_msg, details=None):
     return error_entry
 
 # --- 분석 히스토리 추가 함수 ---
-def add_to_history(question, result_type, figure=None, data=None, insights=None):
+def add_to_history(question, result_type, figure=None, data=None, insights=None, code=None):
     """분석 결과를 히스토리에 추가"""
     history_entry = {
         "id": str(uuid.uuid4()),  # 고유 ID 생성
@@ -45,7 +45,8 @@ def add_to_history(question, result_type, figure=None, data=None, insights=None)
         "result_type": result_type,
         "figure": figure,
         "data": data.to_dict() if data is not None else None,
-        "insights": insights
+        "insights": insights,
+        "code": code
     }
     st.session_state.analysis_history.append(history_entry)
 
@@ -461,6 +462,29 @@ if df_facility is not None:
                             pivot = multi.pivot(index=x_label, columns=group_col, values=mentioned_col)
                             st.dataframe(pivot)
                         
+                        with st.expander("💻 그래프 생성 코드"):
+                            code = f"""import plotly.express as px
+import pandas as pd
+
+# 데이터 준비
+data = {multi.to_dict('list')}
+df = pd.DataFrame(data)
+
+# 그래프 생성
+fig = px.line(df, 
+              x='{x_label}', 
+              y='{mentioned_col}', 
+              color='{group_col}',
+              markers=True, 
+              title='{mentioned_col}의 {group_col}별 {time_unit_kr} 평균 추이{"(이상치 제거)" if use_outlier_removal else ""}')
+
+fig.update_xaxes(title='{x_label}')
+fig.update_yaxes(title='{mentioned_col} 평균')
+fig.update_layout(legend_title='{group_col}', height=500)
+
+fig.show()"""
+                            st.code(code, language="python")
+                        
                         # 계열별 인사이트
                         st.markdown("### 🎯 계열별 핵심 인사이트")
                         
@@ -503,12 +527,34 @@ if df_facility is not None:
                                     st.warning(f"⚠️ AI 인사이트 생성 실패: {e}")
                         
                         # 히스토리에 추가
+                        multi_code = f"""import plotly.express as px
+import pandas as pd
+
+# 데이터 준비
+data = {multi.to_dict('list')}
+df = pd.DataFrame(data)
+
+# 그래프 생성
+fig = px.line(df, 
+              x='{x_label}', 
+              y='{mentioned_col}', 
+              color='{group_col}',
+              markers=True, 
+              title='{mentioned_col}의 {group_col}별 {time_unit_kr} 평균 추이{"(이상치 제거)" if use_outlier_removal else ""}')
+
+fig.update_xaxes(title='{x_label}')
+fig.update_yaxes(title='{mentioned_col} 평균')
+fig.update_layout(legend_title='{group_col}', height=500)
+
+fig.show()"""
+                        
                         add_to_history(
                             question=user_question,
                             result_type=f"계열별_{time_unit_kr}_추이",
                             figure=fig,
                             data=multi,
-                            insights=insights_text
+                            insights=insights_text,
+                            code=multi_code
                         )
                     
                     else:
@@ -534,6 +580,28 @@ if df_facility is not None:
                         with st.expander("📊 데이터 테이블"):
                             st.dataframe(time_data)
                         
+                        with st.expander("💻 그래프 생성 코드"):
+                            code = f"""import plotly.express as px
+import pandas as pd
+
+# 데이터 준비
+data = {time_data.to_dict('list')}
+df = pd.DataFrame(data)
+
+# 그래프 생성
+fig = px.line(df, 
+              x='{x_label}', 
+              y='{mentioned_col}',
+              markers=True, 
+              title='{mentioned_col}의 {time_unit_kr} 평균 추이{"(이상치 제거)" if use_outlier_removal else ""}')
+
+fig.update_xaxes(title='{x_label}')
+fig.update_yaxes(title='{mentioned_col} 평균')
+fig.update_layout(height=500)
+
+fig.show()"""
+                            st.code(code, language="python")
+                        
                         # 인사이트
                         max_time = time_data.loc[time_data[mentioned_col].idxmax(), x_label]
                         max_val = time_data[mentioned_col].max()
@@ -551,12 +619,33 @@ if df_facility is not None:
                         st.info(insights_text)
                         
                         # 히스토리에 추가
+                        single_code = f"""import plotly.express as px
+import pandas as pd
+
+# 데이터 준비
+data = {time_data.to_dict('list')}
+df = pd.DataFrame(data)
+
+# 그래프 생성
+fig = px.line(df, 
+              x='{x_label}', 
+              y='{mentioned_col}',
+              markers=True, 
+              title='{mentioned_col}의 {time_unit_kr} 평균 추이{"(이상치 제거)" if use_outlier_removal else ""}')
+
+fig.update_xaxes(title='{x_label}')
+fig.update_yaxes(title='{mentioned_col} 평균')
+fig.update_layout(height=500)
+
+fig.show()"""
+                        
                         add_to_history(
                             question=user_question,
                             result_type=f"{time_unit_kr}_추이",
                             figure=fig,
                             data=time_data,
-                            insights=insights_text
+                            insights=insights_text,
+                            code=single_code
                         )
                 
                 # === 우선순위 2: 간단한 통계 ===
@@ -624,6 +713,13 @@ if df_facility is not None:
                     # 고유 key로 히스토리 차트 표시
                     history_key = f"history_{entry['id']}_{idx}"
                     st.plotly_chart(entry['figure'], use_container_width=True, key=history_key)
+                    
+                    # 그래프 생성 코드 표시
+                    with st.expander("💻 그래프 생성 코드", expanded=False):
+                        if entry.get('code'):
+                            st.code(entry['code'], language="python")
+                        else:
+                            st.info("코드 정보가 저장되지 않았습니다.")
                 
                 if entry['data'] is not None:
                     st.write("**데이터:**")
@@ -661,4 +757,4 @@ if len(st.session_state.error_logs) > 0:
             st.rerun()
 
 st.divider()
-st.caption("🔧 철강 설비 AI 대시보드 v10.1 Final | 키워드 감지 수정 + 중복 ID 해결 | Gemini 2.5")
+st.caption("🔧 철강 설비 AI 대시보드 v10.2 | 키워드 감지 + 중복 ID 해결 + 코드 표시 | Gemini 2.5")
