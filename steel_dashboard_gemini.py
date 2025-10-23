@@ -19,6 +19,8 @@ st.title("🤖 철강 설비 AI 에이전트 대시보드")
 # 세션 상태 초기화
 if 'error_logs' not in st.session_state:
     st.session_state.error_logs = []
+if 'analysis_history' not in st.session_state:
+    st.session_state.analysis_history = []
 
 # --- 에러 로깅 함수 ---
 def log_error(error_type, error_msg, details=None):
@@ -32,20 +34,22 @@ def log_error(error_type, error_msg, details=None):
     st.session_state.error_logs.append(error_entry)
     return error_entry
 
+# --- 분석 히스토리 추가 함수 ---
+def add_to_history(question, result_type, figure=None, data=None, insights=None):
+    """분석 결과를 히스토리에 추가"""
+    history_entry = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "question": question,
+        "result_type": result_type,
+        "figure": figure,
+        "data": data.to_dict() if data is not None else None,
+        "insights": insights
+    }
+    st.session_state.analysis_history.append(history_entry)
+
 # --- 이상치 제거 함수 ---
 def remove_outliers(df, column, method='iqr', threshold=1.5):
-    """
-    이상치 제거 함수
-    
-    Parameters:
-    - df: DataFrame
-    - column: 대상 컬럼명
-    - method: 'iqr' (사분위수), 'zscore' (Z-점수), 'percentile' (백분위수)
-    - threshold: 임계값 (IQR: 1.5배, Z-score: 3, Percentile: 상하위 1%)
-    
-    Returns:
-    - 정제된 DataFrame, 제거된 행 수
-    """
+    """이상치 제거 함수"""
     original_len = len(df)
     
     if method == 'iqr':
@@ -126,7 +130,7 @@ def get_llm():
     
     if not api_key:
         log_error("ConfigError", "Google API 키 없음", "GOOGLE_API_KEY 환경변수 또는 secrets 미설정")
-        st.error("❌ Google Gemini API 키가 설정되지 않았습니다.")
+        st.warning("⚠️ Google Gemini API 키가 설정되지 않았습니다. AI 인사이트 없이 기본 분석만 가능합니다.")
         return None
     
     models_to_try = [
@@ -211,29 +215,27 @@ else:
         import numpy as np
         np.random.seed(42)
         
-        dates = pd.date_range('2024-01-01', periods=2631, freq='4H')
+        dates = pd.date_range('2024-01-01', periods=300, freq='D')  # 300일
         
-        # 7월에 이상치 포함한 샘플 데이터
-        wat_unit_values = []
+        prod_wgt_values = []
         for date in dates:
             month = date.month
-            if month == 7:
-                # 7월에 일부 이상치 추가
-                if np.random.random() > 0.95:  # 5% 확률로 이상치
-                    wat_unit_values.append(np.random.uniform(900, 1100))
-                else:
-                    wat_unit_values.append(np.random.normal(630, 30))
+            # 월별 패턴
+            base_value = 1500 + (month - 6) * 50
+            # 이상치 추가 (5% 확률)
+            if np.random.random() > 0.95:
+                prod_wgt_values.append(base_value + np.random.uniform(1000, 2000))
             else:
-                wat_unit_values.append(np.random.normal(450, 50))
+                prod_wgt_values.append(np.random.normal(base_value, 200))
         
         df_facility = pd.DataFrame({
             'wrk_date': dates,
-            'md_shft': np.random.choice(['A', 'B', 'C'], 2631),
-            'prod_wgt': np.random.normal(1500, 300, 2631),
-            'eaf_wat_sum': np.random.normal(5000, 1000, 2631),
-            'wat_unit': wat_unit_values
+            'md_shft': np.random.choice(['A', 'B', 'C'], 300),
+            'prod_wgt': prod_wgt_values,
+            'eaf_wat_sum': np.random.normal(5000, 1000, 300),
+            'wat_unit': np.random.normal(450, 50, 300)
         })
-        st.success("✅ 샘플 데이터 생성 (이상치 포함)!")
+        st.success("✅ 샘플 데이터 생성 (300일, 이상치 포함)!")
         st.rerun()
 
 if df_facility is not None:
@@ -308,15 +310,12 @@ if df_facility is not None:
     st.divider()
     st.subheader("💬 AI에게 질문하기")
     
-    if 'chat_history' not in st.session_state:
-        st.session_state.chat_history = []
-    
     sample_qs = {
         "Q1": "prod_wgt 평균은?",
-        "Q2": "wat_unit 월별 추이",
-        "Q3": "md_shft별 wat_unit 월별 추이",
-        "Q4": "데이터 행 수는?",
-        "Q5": "결측치가 있는 컬럼은?"
+        "Q2": "prod_wgt 일별 추이",
+        "Q3": "md_shft별 prod_wgt 일별 추이",
+        "Q4": "prod_wgt 월별 추이",
+        "Q5": "md_shft별 prod_wgt 월별 추이"
     }
     
     st.write("**💡 샘플 질문:**")
@@ -328,7 +327,7 @@ if df_facility is not None:
     user_question = st.text_input(
         "질문:",
         value=st.session_state.get('sample_question', ''),
-        placeholder="예: md_shft별로 wat_unit 월별 추이를 선그래프로 (이상치 제거 체크박스 활성화하면 자동 적용)"
+        placeholder="예: md_shft별로 prod_wgt 일별 평균 추이를 선그래프로"
     )
     
     if st.button("🚀 분석", type="primary"):
@@ -336,12 +335,35 @@ if df_facility is not None:
             try:
                 # === 질문 분석 ===
                 graph_keywords = ["그래프", "선그래프", "막대그래프", "차트", "추이", "변화", "표현", "그려", "시각화"]
-                time_keywords = ["월별", "일별", "주별", "년별", "기간별", "시계열"]
+                
+                # ⭐ 시간 단위 명확히 구분
+                daily_keywords = ["일별", "날짜별", "daily", "day", "date"]
+                monthly_keywords = ["월별", "monthly", "month"]
+                
+                is_daily = any(kw in user_question for kw in daily_keywords)
+                is_monthly = any(kw in user_question for kw in monthly_keywords)
+                
+                # 일별도 월별도 아니면 기본적으로 추이 키워드로 판단
+                time_keywords = daily_keywords + monthly_keywords + ["추이", "변화", "시계열"]
+                is_time_series = any(kw in user_question for kw in time_keywords)
+                
                 multi_keywords = ["계열", "조로", "구분", "별로", "분리", "그룹별", "나누어", "각각"]
                 
                 wants_graph = any(kw in user_question for kw in graph_keywords)
-                is_time_series = any(kw in user_question for kw in time_keywords)
                 is_multi_series = any(kw in user_question for kw in multi_keywords)
+                
+                # 시간 단위 결정 (우선순위: 일별 > 월별)
+                if is_daily:
+                    time_unit = "day"
+                    time_unit_kr = "일별"
+                elif is_monthly:
+                    time_unit = "month"
+                    time_unit_kr = "월별"
+                else:
+                    time_unit = "day"  # 기본값은 일별
+                    time_unit_kr = "일별"
+                
+                st.info(f"🔍 감지된 시간 단위: **{time_unit_kr}** (질문에 '{time_unit_kr}' 키워드 {'발견' if (is_daily or is_monthly) else '없음 - 기본값 사용'})")
                 
                 # 날짜 컬럼 찾기
                 date_col = None
@@ -380,8 +402,9 @@ if df_facility is not None:
                     # 데이터 복사
                     temp_df = df_facility.copy()
                     
-                    # 이상치 제거 (옵션 활성화 시)
+                    # 이상치 제거
                     outlier_info = None
+                    removed_count = 0
                     if use_outlier_removal:
                         st.info(f"🔧 이상치 제거 중... (방법: {outlier_method}, 임계값: {outlier_threshold})")
                         temp_df, removed_count, outlier_info = remove_outliers(
@@ -393,169 +416,152 @@ if df_facility is not None:
                         else:
                             st.info("ℹ️ 제거된 이상치가 없습니다.")
                     
-                    temp_df['month'] = temp_df[date_col].dt.month
+                    # ⭐ 시간 단위에 따라 그룹화
+                    if time_unit == "day":
+                        temp_df['time_group'] = temp_df[date_col].dt.date
+                        x_label = "날짜"
+                    else:  # month
+                        temp_df['time_group'] = temp_df[date_col].dt.month
+                        x_label = "월"
                     
-                    # 1-10월 필터링
-                    if "1월" in user_question and "10월" in user_question:
-                        temp_df = temp_df[temp_df['month'].between(1, 10)]
+                    # 기간 필터링
+                    if "1월" in user_question and "10월" in user_question and time_unit == "month":
+                        temp_df = temp_df[temp_df['time_group'].between(1, 10)]
                     
                     if is_multi_series and group_col:
                         # === 다중 계열 분석 ===
-                        st.markdown("### 📈 계열별 월별 추이 그래프")
+                        st.markdown(f"### 📈 계열별 {time_unit_kr} 추이 그래프")
                         
                         if use_outlier_removal and removed_count > 0:
                             st.caption(f"💡 이상치 제거 적용됨: {removed_count:,}개 데이터 포인트 제거")
                         
-                        multi = temp_df.groupby(['month', group_col])[mentioned_col].mean().reset_index()
-                        multi.columns = ['월', group_col, mentioned_col]
+                        multi = temp_df.groupby(['time_group', group_col])[mentioned_col].mean().reset_index()
+                        multi.columns = [x_label, group_col, mentioned_col]
                         
-                        fig = px.line(multi, x='월', y=mentioned_col, color=group_col,
+                        fig = px.line(multi, x=x_label, y=mentioned_col, color=group_col,
                                     markers=True, 
-                                    title=f'{mentioned_col}의 {group_col}별 월별 추이{"(이상치 제거)" if use_outlier_removal else ""}')
-                        fig.update_xaxes(title="월", dtick=1)
+                                    title=f'{mentioned_col}의 {group_col}별 {time_unit_kr} 평균 추이{"(이상치 제거)" if use_outlier_removal else ""}')
+                        fig.update_xaxes(title=x_label)
                         fig.update_yaxes(title=f"{mentioned_col} 평균")
                         fig.update_layout(legend_title=group_col, height=500)
                         st.plotly_chart(fig, use_container_width=True)
                         
                         with st.expander("📊 계열별 데이터 테이블"):
-                            pivot = multi.pivot(index='월', columns=group_col, values=mentioned_col)
+                            pivot = multi.pivot(index=x_label, columns=group_col, values=mentioned_col)
                             st.dataframe(pivot)
-                        
-                        # 프로세스 표시
-                        process = {
-                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            "question_type": "계열별 월별 추이",
-                            "outlier_removal": use_outlier_removal,
-                            "outlier_info": outlier_info,
-                            "removed_count": removed_count if use_outlier_removal else 0,
-                            "date_column": date_col,
-                            "value_column": mentioned_col,
-                            "group_column": group_col,
-                            "groups": temp_df[group_col].unique().tolist(),
-                            "steps": [
-                                f"✅ 질문 유형: 계열별 월별 추이 그래프",
-                                f"✅ 날짜 컬럼: {date_col}",
-                                f"✅ 분석 컬럼: {mentioned_col}",
-                                f"✅ 그룹 컬럼: {group_col}",
-                            ]
-                        }
-                        
-                        if use_outlier_removal:
-                            process["steps"].extend([
-                                f"✅ 이상치 제거: {outlier_method} 방법 ({removed_count}개 제거)",
-                                f"   - {outlier_info['method']}",
-                                f"   - 임계값: {outlier_threshold}"
-                            ])
-                        
-                        process["steps"].extend([
-                            f"✅ 월 추출: df['{date_col}'].dt.month",
-                            f"✅ 그룹화: groupby(['month', '{group_col}'])['{mentioned_col}'].mean()",
-                            "✅ 다중 선그래프 생성 완료"
-                        ])
-                        
-                        process["pandas_code"] = f"df.groupby([df['{date_col}'].dt.month, '{group_col}'])['{mentioned_col}'].mean()"
-                        process["plotly_code"] = f"px.line(data, x='월', y='{mentioned_col}', color='{group_col}', markers=True)"
-                        
-                        with st.expander("🔍 분석 프로세스"):
-                            st.write("**📋 실행 단계:**")
-                            for step in process["steps"]:
-                                st.write(step)
-                            
-                            if use_outlier_removal and outlier_info:
-                                st.write("\n**🎯 이상치 제거 상세:**")
-                                st.json(outlier_info)
-                            
-                            st.write("\n**💻 Pandas 코드:**")
-                            st.code(process["pandas_code"], language="python")
-                            
-                            st.write("\n**💻 Plotly 코드:**")
-                            st.code(process["plotly_code"], language="python")
-                            
-                            st.write("\n**🔧 전체 프로세스:**")
-                            st.json(process)
                         
                         # 계열별 인사이트
                         st.markdown("### 🎯 계열별 핵심 인사이트")
                         
+                        insights_text = ""
                         for group in sorted(temp_df[group_col].unique()):
                             group_data = multi[multi[group_col] == group]
                             if len(group_data) > 0:
-                                max_month = group_data.loc[group_data[mentioned_col].idxmax(), '월']
+                                max_time = group_data.loc[group_data[mentioned_col].idxmax(), x_label]
                                 max_value = group_data[mentioned_col].max()
-                                min_month = group_data.loc[group_data[mentioned_col].idxmin(), '월']
+                                min_time = group_data.loc[group_data[mentioned_col].idxmin(), x_label]
                                 min_value = group_data[mentioned_col].min()
                                 avg_value = group_data[mentioned_col].mean()
                                 
-                                st.info(f"""
-                                **{group_col} = {group}**
-                                - 최고점: {int(max_month)}월 ({max_value:,.2f})
-                                - 최저점: {int(min_month)}월 ({min_value:,.2f})
-                                - 평균: {avg_value:,.2f}
-                                - 변동폭: {max_value - min_value:,.2f} ({((max_value/min_value - 1) * 100):.1f}% 증가)
-                                """)
+                                insight = f"""
+**{group_col} = {group}**
+- 최고점: {max_time} ({max_value:,.2f})
+- 최저점: {min_time} ({min_value:,.2f})
+- 평균: {avg_value:,.2f}
+- 변동폭: {max_value - min_value:,.2f} ({((max_value/min_value - 1) * 100):.1f}% 증가)
+                                """
+                                st.info(insight)
+                                insights_text += insight + "\n"
                         
                         # AI 인사이트
                         if llm:
                             with st.spinner("AI 인사이트 생성 중..."):
                                 try:
                                     prompt = f"""
-다음은 {group_col}별 {mentioned_col}의 월별 평균 데이터입니다{"(이상치 제거 후)" if use_outlier_removal else ""}:
+다음은 {group_col}별 {mentioned_col}의 {time_unit_kr} 평균 데이터입니다{"(이상치 제거 후)" if use_outlier_removal else ""}:
 {multi.to_string()}
 
 철강 설비 데이터 전문가로서, 각 그룹별로 주목할 만한 특징과 차이점을 한국어로 3-4가지 설명하세요.
 """
                                     insight = llm.invoke(prompt)
-                                    st.success(f"**🤖 AI 인사이트:**\n\n{insight.content}")
+                                    ai_insight = insight.content
+                                    st.success(f"**🤖 AI 인사이트:**\n\n{ai_insight}")
+                                    insights_text += f"\n🤖 AI 분석:\n{ai_insight}"
                                 except Exception as e:
                                     log_error("AIInsightError", "AI 인사이트 생성 실패", str(e))
                                     st.warning(f"⚠️ AI 인사이트 생성 실패: {e}")
+                        
+                        # 히스토리에 추가
+                        add_to_history(
+                            question=user_question,
+                            result_type=f"계열별_{time_unit_kr}_추이",
+                            figure=fig,
+                            data=multi,
+                            insights=insights_text
+                        )
                     
                     else:
                         # === 단일 계열 분석 ===
-                        st.markdown("### 📈 월별 추이 그래프")
+                        st.markdown(f"### 📈 {time_unit_kr} 추이 그래프")
                         
                         if use_outlier_removal and removed_count > 0:
                             st.caption(f"💡 이상치 제거 적용됨: {removed_count:,}개 데이터 포인트 제거")
                         
-                        monthly = temp_df.groupby('month')[mentioned_col].mean().reset_index()
-                        monthly.columns = ['월', mentioned_col]
+                        time_data = temp_df.groupby('time_group')[mentioned_col].mean().reset_index()
+                        time_data.columns = [x_label, mentioned_col]
                         
-                        fig = px.line(monthly, x='월', y=mentioned_col,
+                        fig = px.line(time_data, x=x_label, y=mentioned_col,
                                     markers=True, 
-                                    title=f'{mentioned_col}의 월별 평균 추이{"(이상치 제거)" if use_outlier_removal else ""}')
-                        fig.update_xaxes(title="월", dtick=1)
+                                    title=f'{mentioned_col}의 {time_unit_kr} 평균 추이{"(이상치 제거)" if use_outlier_removal else ""}')
+                        fig.update_xaxes(title=x_label)
                         fig.update_yaxes(title=f"{mentioned_col} 평균")
                         fig.update_layout(height=500)
                         st.plotly_chart(fig, use_container_width=True)
                         
-                        with st.expander("📊 월별 데이터 테이블"):
-                            st.dataframe(monthly)
+                        with st.expander("📊 데이터 테이블"):
+                            st.dataframe(time_data)
                         
                         # 인사이트
-                        max_month = monthly.loc[monthly[mentioned_col].idxmax(), '월']
-                        max_val = monthly[mentioned_col].max()
-                        min_month = monthly.loc[monthly[mentioned_col].idxmin(), '월']
-                        min_val = monthly[mentioned_col].min()
-                        avg_val = monthly[mentioned_col].mean()
+                        max_time = time_data.loc[time_data[mentioned_col].idxmax(), x_label]
+                        max_val = time_data[mentioned_col].max()
+                        min_time = time_data.loc[time_data[mentioned_col].idxmin(), x_label]
+                        min_val = time_data[mentioned_col].min()
+                        avg_val = time_data[mentioned_col].mean()
                         
-                        st.info(f"""
+                        insights_text = f"""
 **🎯 핵심 인사이트:**
-- 최고점: {int(max_month)}월 ({max_val:,.2f})
-- 최저점: {int(min_month)}월 ({min_val:,.2f})
+- 최고점: {max_time} ({max_val:,.2f})
+- 최저점: {min_time} ({min_val:,.2f})
 - 평균: {avg_val:,.2f}
 - 변동폭: {max_val - min_val:,.2f} ({((max_val/min_val - 1) * 100):.1f}% 증가)
-                        """)
+                        """
+                        st.info(insights_text)
+                        
+                        # 히스토리에 추가
+                        add_to_history(
+                            question=user_question,
+                            result_type=f"{time_unit_kr}_추이",
+                            figure=fig,
+                            data=time_data,
+                            insights=insights_text
+                        )
                 
                 # === 우선순위 2: 간단한 통계 ===
                 elif "행" in user_question or "row" in user_question.lower():
-                    st.success(f"📊 데이터 행 수: **{len(df_facility):,}개**")
+                    result = f"📊 데이터 행 수: **{len(df_facility):,}개**"
+                    st.success(result)
+                    add_to_history(user_question, "통계", insights=result)
                 
                 elif "컬럼" in user_question and not wants_graph:
-                    st.success(f"📋 컬럼: {', '.join(df_facility.columns.tolist())}")
+                    result = f"📋 컬럼: {', '.join(df_facility.columns.tolist())}"
+                    st.success(result)
+                    add_to_history(user_question, "통계", insights=result)
                 
                 elif "평균" in user_question and mentioned_col and not wants_graph and not is_time_series:
                     avg = df_facility[mentioned_col].mean()
-                    st.success(f"📊 {mentioned_col} 평균: **{avg:,.2f}**")
+                    result = f"📊 {mentioned_col} 평균: **{avg:,.2f}**"
+                    st.success(result)
+                    add_to_history(user_question, "통계", insights=result)
                 
                 elif "결측치" in user_question:
                     null_cols = df_facility.isnull().sum()
@@ -563,16 +569,19 @@ if df_facility is not None:
                     if len(null_cols) > 0:
                         st.write("**결측치가 있는 컬럼:**")
                         st.dataframe(null_cols)
+                        add_to_history(user_question, "결측치", data=pd.DataFrame(null_cols))
                     else:
-                        st.success("✅ 결측치가 없습니다!")
+                        result = "✅ 결측치가 없습니다!"
+                        st.success(result)
+                        add_to_history(user_question, "결측치", insights=result)
                 
                 else:
                     st.warning("⚠️ 질문을 이해하지 못했습니다.")
                     log_error("QuestionParseError", "질문 파싱 실패", user_question)
                     st.info("""
 **💡 질문 예시:**
-- "md_shft별로 wat_unit 월별 추이를 선그래프로"
-- "wat_unit의 월별 추이 그래프"
+- "md_shft별로 prod_wgt **일별** 추이 그래프"
+- "prod_wgt **월별** 추이"
 - "prod_wgt 평균은?"
                     """)
                 
@@ -587,33 +596,33 @@ if df_facility is not None:
         else:
             st.warning("⚠️ 질문을 입력하세요")
     
-    # --- 수동 그래프 ---
-    st.divider()
-    st.subheader("📈 수동 그래프 생성")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        chart_type = st.selectbox("차트 타입", ["선그래프", "막대", "히스토그램", "박스플롯"])
-    with col2:
-        if numeric_cols:
-            selected_col = st.selectbox("분석할 컬럼", numeric_cols)
-    
-    if st.button("📊 그래프 생성", type="secondary"):
-        try:
-            if selected_col:
-                if chart_type == "선그래프":
-                    fig = px.line(df_facility.head(100), y=selected_col, title=f"{selected_col} 추이 (최근 100개)")
-                elif chart_type == "막대":
-                    fig = px.bar(df_facility.head(50), y=selected_col, title=f"{selected_col} (최근 50개)")
-                elif chart_type == "히스토그램":
-                    fig = px.histogram(df_facility, x=selected_col, title=f"{selected_col} 분포")
-                else:
-                    fig = px.box(df_facility, y=selected_col, title=f"{selected_col} 박스플롯")
+    # --- 분석 히스토리 ---
+    if len(st.session_state.analysis_history) > 0:
+        st.divider()
+        st.subheader("📚 분석 히스토리")
+        
+        st.write(f"**총 {len(st.session_state.analysis_history)}개의 분석 결과**")
+        
+        for idx, entry in enumerate(reversed(st.session_state.analysis_history), 1):
+            with st.expander(f"**{idx}. [{entry['timestamp']}]** {entry['question']}", expanded=(idx == 1)):
+                st.write(f"**분석 유형:** {entry['result_type']}")
                 
-                st.plotly_chart(fig, use_container_width=True)
-        except Exception as e:
-            log_error("ManualGraphError", "수동 그래프 생성 실패", str(e))
-            st.error(f"❌ 그래프 생성 오류: {e}")
+                if entry['figure'] is not None:
+                    st.plotly_chart(entry['figure'], use_container_width=True)
+                
+                if entry['data'] is not None:
+                    st.write("**데이터:**")
+                    st.dataframe(pd.DataFrame(entry['data']))
+                
+                if entry['insights']:
+                    st.write("**인사이트:**")
+                    st.markdown(entry['insights'])
+        
+        col1, col2 = st.columns([1, 5])
+        with col1:
+            if st.button("🗑️ 히스토리 초기화"):
+                st.session_state.analysis_history = []
+                st.rerun()
 
 # --- 에러 로그 섹션 ---
 if len(st.session_state.error_logs) > 0:
@@ -637,4 +646,4 @@ if len(st.session_state.error_logs) > 0:
             st.rerun()
 
 st.divider()
-st.caption("🔧 철강 설비 AI 대시보드 v9.0 | 이상치 제거 + 에러 표시 | Gemini 2.5")
+st.caption("🔧 철강 설비 AI 대시보드 v10.0 | 일별/월별 구분 + 히스토리 저장 | Gemini 2.5")
