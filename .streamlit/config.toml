@@ -1,0 +1,12 @@
+[server]
+# 최대 업로드 파일 크기 (MB 단위)
+# 기본값: 200MB
+# 설정값: 1000MB (1GB)
+maxUploadSize = 1000
+
+# 메시지 최대 크기도 함께 증가 (MB 단위)
+maxMessageSize = 1000
+
+[browser]
+# 파일 업로드 시 진행률 표시
+gatherUsageStats = false
