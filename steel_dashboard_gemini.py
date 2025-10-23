@@ -338,7 +338,62 @@ if df_facility is not None:
                 # === 질문 분석 (개선된 로직) ===
                 user_question_lower = user_question.lower()
                 
-                graph_keywords = ["그래프", "선그래프", "막대그래프", "차트", "추이", "변화", "표현", "그려", "시각화"]
+                # 그래프 타입 키워드 (확장)
+                line_keywords = ["선그래프", "라인", "line", "추이", "변화", "트렌드", "시계열"]
+                bar_keywords = ["막대그래프", "막대", "bar", "바차트", "바그래프", "바"]
+                pie_keywords = ["파이차트", "pie", "파이", "원그래프", "비율", "구성"]
+                scatter_keywords = ["산점도", "scatter", "점그래프", "분산도"]
+                area_keywords = ["영역차트", "area", "면적그래프", "영역"]
+                box_keywords = ["박스플롯", "box", "상자그림", "boxplot"]
+                histogram_keywords = ["히스토그램", "histogram", "분포도", "분포"]
+                
+                graph_keywords = (["그래프", "차트", "표현", "그려", "시각화"] + 
+                                 line_keywords + bar_keywords + pie_keywords + 
+                                 scatter_keywords + area_keywords + box_keywords + histogram_keywords)
+                
+                # 그래프 타입 감지
+                has_line = any(kw in user_question_lower for kw in line_keywords)
+                has_bar = any(kw in user_question_lower for kw in bar_keywords)
+                has_pie = any(kw in user_question_lower for kw in pie_keywords)
+                has_scatter = any(kw in user_question_lower for kw in scatter_keywords)
+                has_area = any(kw in user_question_lower for kw in area_keywords)
+                has_box = any(kw in user_question_lower for kw in box_keywords)
+                has_histogram = any(kw in user_question_lower for kw in histogram_keywords)
+                
+                # 우선순위로 차트 타입 결정
+                if has_bar:
+                    chart_type = "bar"
+                    chart_type_kr = "막대그래프"
+                    detected_chart_reason = f"질문에 '{[kw for kw in bar_keywords if kw in user_question_lower][0]}' 키워드 발견"
+                elif has_pie:
+                    chart_type = "pie"
+                    chart_type_kr = "파이차트"
+                    detected_chart_reason = f"질문에 '{[kw for kw in pie_keywords if kw in user_question_lower][0]}' 키워드 발견"
+                elif has_scatter:
+                    chart_type = "scatter"
+                    chart_type_kr = "산점도"
+                    detected_chart_reason = f"질문에 '{[kw for kw in scatter_keywords if kw in user_question_lower][0]}' 키워드 발견"
+                elif has_area:
+                    chart_type = "area"
+                    chart_type_kr = "영역차트"
+                    detected_chart_reason = f"질문에 '{[kw for kw in area_keywords if kw in user_question_lower][0]}' 키워드 발견"
+                elif has_box:
+                    chart_type = "box"
+                    chart_type_kr = "박스플롯"
+                    detected_chart_reason = f"질문에 '{[kw for kw in box_keywords if kw in user_question_lower][0]}' 키워드 발견"
+                elif has_histogram:
+                    chart_type = "histogram"
+                    chart_type_kr = "히스토그램"
+                    detected_chart_reason = f"질문에 '{[kw for kw in histogram_keywords if kw in user_question_lower][0]}' 키워드 발견"
+                elif has_line:
+                    chart_type = "line"
+                    chart_type_kr = "선그래프"
+                    detected_chart_reason = f"질문에 '{[kw for kw in line_keywords if kw in user_question_lower][0]}' 키워드 발견"
+                else:
+                    # 기본값: 선그래프
+                    chart_type = "line"
+                    chart_type_kr = "선그래프"
+                    detected_chart_reason = "키워드 없음 - 기본값 사용"
                 
                 # ⭐ 시간 단위 키워드 명확히 분리
                 daily_keywords = ["일별", "날짜별", "daily", "day by day"]
@@ -374,7 +429,13 @@ if df_facility is not None:
                 is_multi_series = any(kw in user_question_lower for kw in multi_keywords)
                 
                 # 감지 결과 표시
-                st.info(f"🔍 감지된 시간 단위: **{time_unit_kr}** ({detected_reason})")
+                if wants_graph or is_time_series:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.info(f"📊 감지된 그래프 타입: **{chart_type_kr}** ({detected_chart_reason})")
+                    with col2:
+                        st.info(f"🔍 감지된 시간 단위: **{time_unit_kr}** ({detected_reason})")
+                st.info(f"📊 감지된 그래프 타입: **{chart_type_kr}**")
                 
                 # 날짜 컬럼 찾기
                 date_col = None
@@ -441,7 +502,7 @@ if df_facility is not None:
                     
                     if is_multi_series and group_col:
                         # === 다중 계열 분석 ===
-                        st.markdown(f"### 📈 계열별 {time_unit_kr} 추이 그래프")
+                        st.markdown(f"### 📈 계열별 {time_unit_kr} {chart_type_kr}")
                         
                         if use_outlier_removal and removed_count > 0:
                             st.caption(f"💡 이상치 제거 적용됨: {removed_count:,}개 데이터 포인트 제거")
@@ -451,9 +512,26 @@ if df_facility is not None:
                         
                         # 고유 key로 차트 생성
                         chart_key = f"chart_{uuid.uuid4().hex[:8]}"
-                        fig = px.line(multi, x=x_label, y=mentioned_col, color=group_col,
-                                    markers=True, 
-                                    title=f'{mentioned_col}의 {group_col}별 {time_unit_kr} 평균 추이{"(이상치 제거)" if use_outlier_removal else ""}')
+                        chart_title = f'{mentioned_col}의 {group_col}별 {time_unit_kr} 평균{"(이상치 제거)" if use_outlier_removal else ""}'
+                        
+                        # 차트 타입에 따라 다른 그래프 생성
+                        if chart_type == "bar":
+                            fig = px.bar(multi, x=x_label, y=mentioned_col, color=group_col,
+                                        title=chart_title, barmode='group')
+                        elif chart_type == "area":
+                            fig = px.area(multi, x=x_label, y=mentioned_col, color=group_col,
+                                         title=chart_title)
+                        elif chart_type == "scatter":
+                            fig = px.scatter(multi, x=x_label, y=mentioned_col, color=group_col,
+                                           title=chart_title, size_max=10)
+                        elif chart_type == "box":
+                            # 박스플롯은 원본 데이터 필요
+                            fig = px.box(temp_df, x='time_group', y=mentioned_col, color=group_col,
+                                        title=chart_title)
+                        else:  # line (기본값)
+                            fig = px.line(multi, x=x_label, y=mentioned_col, color=group_col,
+                                        markers=True, title=chart_title)
+                        
                         fig.update_xaxes(title=x_label)
                         fig.update_yaxes(title=f"{mentioned_col} 평균")
                         fig.update_layout(legend_title=group_col, height=500)
@@ -646,20 +724,62 @@ fig.show()"""
                                     st.warning(f"⚠️ AI 인사이트 생성 실패: {e}")
                         
                         # 히스토리에 추가
-                        multi_code = f"""import plotly.express as px
+                        if chart_type == "bar":
+                            multi_code = f"""import plotly.express as px
 import pandas as pd
 
 # 데이터 준비
 data = {multi.to_dict('list')}
 df = pd.DataFrame(data)
 
-# 그래프 생성
+# 막대그래프 생성
+fig = px.bar(df, 
+             x='{x_label}', 
+             y='{mentioned_col}', 
+             color='{group_col}',
+             title='{mentioned_col}의 {group_col}별 {time_unit_kr} 평균{"(이상치 제거)" if use_outlier_removal else ""}',
+             barmode='group')
+
+fig.update_xaxes(title='{x_label}')
+fig.update_yaxes(title='{mentioned_col} 평균')
+fig.update_layout(legend_title='{group_col}', height=500)
+
+fig.show()"""
+                        elif chart_type == "area":
+                            multi_code = f"""import plotly.express as px
+import pandas as pd
+
+# 데이터 준비
+data = {multi.to_dict('list')}
+df = pd.DataFrame(data)
+
+# 영역차트 생성
+fig = px.area(df, 
+              x='{x_label}', 
+              y='{mentioned_col}', 
+              color='{group_col}',
+              title='{mentioned_col}의 {group_col}별 {time_unit_kr} 평균{"(이상치 제거)" if use_outlier_removal else ""}')
+
+fig.update_xaxes(title='{x_label}')
+fig.update_yaxes(title='{mentioned_col} 평균')
+fig.update_layout(legend_title='{group_col}', height=500)
+
+fig.show()"""
+                        else:  # line (기본값)
+                            multi_code = f"""import plotly.express as px
+import pandas as pd
+
+# 데이터 준비
+data = {multi.to_dict('list')}
+df = pd.DataFrame(data)
+
+# 선그래프 생성
 fig = px.line(df, 
               x='{x_label}', 
               y='{mentioned_col}', 
               color='{group_col}',
               markers=True, 
-              title='{mentioned_col}의 {group_col}별 {time_unit_kr} 평균 추이{"(이상치 제거)" if use_outlier_removal else ""}')
+              title='{mentioned_col}의 {group_col}별 {time_unit_kr} 평균{"(이상치 제거)" if use_outlier_removal else ""}')
 
 fig.update_xaxes(title='{x_label}')
 fig.update_yaxes(title='{mentioned_col} 평균')
@@ -757,7 +877,7 @@ print(pivot_table)
                     
                     else:
                         # === 단일 계열 분석 ===
-                        st.markdown(f"### 📈 {time_unit_kr} 추이 그래프")
+                        st.markdown(f"### 📈 {time_unit_kr} {chart_type_kr}")
                         
                         if use_outlier_removal and removed_count > 0:
                             st.caption(f"💡 이상치 제거 적용됨: {removed_count:,}개 데이터 포인트 제거")
@@ -767,9 +887,34 @@ print(pivot_table)
                         
                         # 고유 key로 차트 생성
                         chart_key = f"chart_{uuid.uuid4().hex[:8]}"
-                        fig = px.line(time_data, x=x_label, y=mentioned_col,
-                                    markers=True, 
-                                    title=f'{mentioned_col}의 {time_unit_kr} 평균 추이{"(이상치 제거)" if use_outlier_removal else ""}')
+                        chart_title = f'{mentioned_col}의 {time_unit_kr} 평균{"(이상치 제거)" if use_outlier_removal else ""}'
+                        
+                        # 차트 타입에 따라 다른 그래프 생성
+                        if chart_type == "bar":
+                            fig = px.bar(time_data, x=x_label, y=mentioned_col,
+                                        title=chart_title)
+                        elif chart_type == "area":
+                            fig = px.area(time_data, x=x_label, y=mentioned_col,
+                                         title=chart_title)
+                        elif chart_type == "scatter":
+                            fig = px.scatter(time_data, x=x_label, y=mentioned_col,
+                                           title=chart_title, size_max=10)
+                        elif chart_type == "pie":
+                            # 파이차트는 시계열에 부적합하지만 요청 시 생성
+                            fig = px.pie(time_data, names=x_label, values=mentioned_col,
+                                        title=chart_title)
+                        elif chart_type == "box":
+                            # 박스플롯은 원본 데이터 필요
+                            fig = px.box(temp_df, y=mentioned_col,
+                                        title=chart_title)
+                        elif chart_type == "histogram":
+                            # 히스토그램은 분포 확인용
+                            fig = px.histogram(temp_df, x=mentioned_col,
+                                             title=f'{mentioned_col} 분포{"(이상치 제거)" if use_outlier_removal else ""}')
+                        else:  # line (기본값)
+                            fig = px.line(time_data, x=x_label, y=mentioned_col,
+                                        markers=True, title=chart_title)
+                        
                         fig.update_xaxes(title=x_label)
                         fig.update_yaxes(title=f"{mentioned_col} 평균")
                         fig.update_layout(height=500)
@@ -888,19 +1033,73 @@ print(time_data)
                             st.code(data_code, language="python")
                         
                         with st.expander("💻 그래프 생성 코드"):
-                            code = f"""import plotly.express as px
+                            if chart_type == "bar":
+                                code = f"""import plotly.express as px
 import pandas as pd
 
 # 데이터 준비
 data = {time_data.to_dict('list')}
 df = pd.DataFrame(data)
 
-# 그래프 생성
+# 막대그래프 생성
+fig = px.bar(df, 
+             x='{x_label}', 
+             y='{mentioned_col}',
+             title='{mentioned_col}의 {time_unit_kr} 평균{"(이상치 제거)" if use_outlier_removal else ""}')
+
+fig.update_xaxes(title='{x_label}')
+fig.update_yaxes(title='{mentioned_col} 평균')
+fig.update_layout(height=500)
+
+fig.show()"""
+                            elif chart_type == "area":
+                                code = f"""import plotly.express as px
+import pandas as pd
+
+# 데이터 준비
+data = {time_data.to_dict('list')}
+df = pd.DataFrame(data)
+
+# 영역차트 생성
+fig = px.area(df, 
+              x='{x_label}', 
+              y='{mentioned_col}',
+              title='{mentioned_col}의 {time_unit_kr} 평균{"(이상치 제거)" if use_outlier_removal else ""}')
+
+fig.update_xaxes(title='{x_label}')
+fig.update_yaxes(title='{mentioned_col} 평균')
+fig.update_layout(height=500)
+
+fig.show()"""
+                            elif chart_type == "pie":
+                                code = f"""import plotly.express as px
+import pandas as pd
+
+# 데이터 준비
+data = {time_data.to_dict('list')}
+df = pd.DataFrame(data)
+
+# 파이차트 생성
+fig = px.pie(df, 
+             names='{x_label}', 
+             values='{mentioned_col}',
+             title='{mentioned_col}의 {time_unit_kr} 구성{"(이상치 제거)" if use_outlier_removal else ""}')
+
+fig.show()"""
+                            else:  # line (기본값)
+                                code = f"""import plotly.express as px
+import pandas as pd
+
+# 데이터 준비
+data = {time_data.to_dict('list')}
+df = pd.DataFrame(data)
+
+# 선그래프 생성
 fig = px.line(df, 
               x='{x_label}', 
               y='{mentioned_col}',
               markers=True, 
-              title='{mentioned_col}의 {time_unit_kr} 평균 추이{"(이상치 제거)" if use_outlier_removal else ""}')
+              title='{mentioned_col}의 {time_unit_kr} 평균{"(이상치 제거)" if use_outlier_removal else ""}')
 
 fig.update_xaxes(title='{x_label}')
 fig.update_yaxes(title='{mentioned_col} 평균')
@@ -925,20 +1124,59 @@ fig.show()"""
                         """
                         st.info(insights_text)
                         
-                        # 히스토리에 추가
-                        single_code = f"""import plotly.express as px
+                        # 히스토리에 추가 - chart_type 반영
+                        if chart_type == "bar":
+                            single_code = f"""import plotly.express as px
 import pandas as pd
 
 # 데이터 준비
 data = {time_data.to_dict('list')}
 df = pd.DataFrame(data)
 
-# 그래프 생성
+# 막대그래프 생성
+fig = px.bar(df, 
+             x='{x_label}', 
+             y='{mentioned_col}',
+             title='{mentioned_col}의 {time_unit_kr} 평균{"(이상치 제거)" if use_outlier_removal else ""}')
+
+fig.update_xaxes(title='{x_label}')
+fig.update_yaxes(title='{mentioned_col} 평균')
+fig.update_layout(height=500)
+
+fig.show()"""
+                        elif chart_type == "area":
+                            single_code = f"""import plotly.express as px
+import pandas as pd
+
+# 데이터 준비
+data = {time_data.to_dict('list')}
+df = pd.DataFrame(data)
+
+# 영역차트 생성
+fig = px.area(df, 
+              x='{x_label}', 
+              y='{mentioned_col}',
+              title='{mentioned_col}의 {time_unit_kr} 평균{"(이상치 제거)" if use_outlier_removal else ""}')
+
+fig.update_xaxes(title='{x_label}')
+fig.update_yaxes(title='{mentioned_col} 평균')
+fig.update_layout(height=500)
+
+fig.show()"""
+                        else:  # line
+                            single_code = f"""import plotly.express as px
+import pandas as pd
+
+# 데이터 준비
+data = {time_data.to_dict('list')}
+df = pd.DataFrame(data)
+
+# 선그래프 생성
 fig = px.line(df, 
               x='{x_label}', 
               y='{mentioned_col}',
               markers=True, 
-              title='{mentioned_col}의 {time_unit_kr} 평균 추이{"(이상치 제거)" if use_outlier_removal else ""}')
+              title='{mentioned_col}의 {time_unit_kr} 평균{"(이상치 제거)" if use_outlier_removal else ""}')
 
 fig.update_xaxes(title='{x_label}')
 fig.update_yaxes(title='{mentioned_col} 평균')
@@ -1144,4 +1382,4 @@ if len(st.session_state.error_logs) > 0:
             st.rerun()
 
 st.divider()
-st.caption("🔧 철강 설비 AI 대시보드 v10.3 | 키워드 감지 + 코드 표시 + 데이터 프로세스 | Gemini 2.5")
+st.caption("🔧 철강 설비 AI 대시보드 v11.0 | 모든 그래프 타입 지원 + 자동 감지 | Gemini 2.5")
