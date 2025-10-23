@@ -52,14 +52,13 @@ def get_llm():
         """)
         return None
     
-    # 여러 모델명 시도 (최신 → 구버전 순서)
+    # 여러 모델명 시도 (Gemini 2.5 최신!)
     models_to_try = [
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro-latest",
-        "gemini-1.5-pro",
-        "models/gemini-1.5-flash-latest",
-        "models/gemini-1.5-flash",
+        "models/gemini-2.5-flash",  # ⭐ 최신 2.5 Flash (가장 빠름!)
+        "models/gemini-2.5-pro-preview-05-06",  # 2.5 Pro
+        "gemini-2.0-flash-exp",  # 2.0 실험 버전
+        "models/gemini-1.5-flash-latest",  # 1.5 Flash (폴백)
+        "models/gemini-1.5-pro-latest",  # 1.5 Pro (폴백)
     ]
     
     for model_name in models_to_try:
@@ -355,4 +354,4 @@ if df_facility is not None:
             st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
-st.caption("🔧 철강 설비 AI 대시보드 v7.1 | Streamlit + Gemini")
+st.caption("🔧 철강 설비 AI 대시보드 v8.0 | Streamlit + Gemini 2.5 Flash")
