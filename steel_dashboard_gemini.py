@@ -1344,28 +1344,221 @@ print(time_data)
                     # === 범위 기반 파이차트 감지 ===
                     import re
                     
-                    # "400 이하", "400 초과", "400이하와 400초과" 등 패턴 감지
-                    range_patterns = [
-                        r'(\d+)\s*이하.*?(\d+)\s*초과',  # "400이하 400초과"
-                        r'(\d+)\s*초과.*?(\d+)\s*이하',  # "400초과 400이하"
-                        r'(\d+)\s*이하',                 # "400이하"
-                        r'(\d+)\s*초과',                 # "400초과"
-                        r'(\d+)\s*미만',                 # "400미만"
-                        r'(\d+)\s*이상',                 # "400이상"
-                    ]
+                    # 다중 구간 패턴 감지 (A그룹, B그룹, C그룹 등)
+                    multi_range_pattern = r'(\d+)\s*[-~]\s*(\d+).*?[A-Z가-힣]그룹.*?(\d+)\s*[-~]\s*(\d+).*?[A-Z가-힣]그룹'
+                    multi_match = re.search(multi_range_pattern, user_question)
+                    
+                    # 모든 숫자 추출 (0, 400, 500 등)
+                    all_numbers = re.findall(r'\d+', user_question)
+                    all_numbers = [int(n) for n in all_numbers if int(n) < 10000]  # 날짜 제외
+                    
+                    # 그룹 이름 추출 (A그룹, B그룹, C그룹 등)
+                    group_names = re.findall(r'([A-Z가-힣])그룹', user_question)
                     
                     range_based = False
-                    threshold = None
+                    multi_range = False
                     
-                    for pattern in range_patterns:
-                        match = re.search(pattern, user_question)
-                        if match:
-                            range_based = True
-                            threshold = int(match.group(1))
-                            break
+                    # 다중 구간 감지
+                    if len(all_numbers) >= 2 and len(group_names) >= 2:
+                        range_based = True
+                        multi_range = True
+                        st.info(f"🎯 다중 범위 그룹핑 감지: {len(group_names)}개 그룹 ({all_numbers})")
                     
-                    # === 범위 기반 파이차트 ===
-                    if range_based and threshold is not None:
+                    # 단일 기준값 패턴 (기존)
+                    elif not multi_range:
+                        range_patterns = [
+                            r'(\d+)\s*이하.*?(\d+)\s*초과',  # "400이하 400초과"
+                            r'(\d+)\s*초과.*?(\d+)\s*이하',  # "400초과 400이하"
+                            r'(\d+)\s*이하',                 # "400이하"
+                            r'(\d+)\s*초과',                 # "400초과"
+                            r'(\d+)\s*미만',                 # "400미만"
+                            r'(\d+)\s*이상',                 # "400이상"
+                        ]
+                        
+                        threshold = None
+                        
+                        for pattern in range_patterns:
+                            match = re.search(pattern, user_question)
+                            if match:
+                                range_based = True
+                                threshold = int(match.group(1))
+                                break
+                    
+                    # === 다중 범위 기반 파이차트 ===
+                    if range_based and multi_range:
+                        st.info(f"🎯 다중 범위 그룹핑 감지: {len(group_names)}개 그룹")
+                        
+                        # 수치형 컬럼 찾기
+                        value_col = None
+                        if mentioned_col:
+                            value_col = mentioned_col
+                        elif numeric_cols:
+                            for col in numeric_cols:
+                                if any(kw in col.lower() for kw in ['wgt', 'unit', 'cnt', 'count', 'sum', 'total']):
+                                    value_col = col
+                                    break
+                            if not value_col:
+                                value_col = numeric_cols[0]
+                            st.info(f"ℹ️ 분석 컬럼: **{value_col}**")
+                        
+                        if value_col:
+                            try:
+                                # 숫자 정렬 (경계값)
+                                boundaries = sorted(set(all_numbers))
+                                st.info(f"📊 경계값: {boundaries}")
+                                
+                                # 범위 기반 그룹 생성 함수
+                                def assign_group(value):
+                                    if len(boundaries) == 2:
+                                        # 2개 경계: 0-400, 400+
+                                        if value <= boundaries[0]:
+                                            return f"{group_names[0]}그룹"
+                                        else:
+                                            return f"{group_names[1]}그룹"
+                                    elif len(boundaries) == 3:
+                                        # 3개 경계: 0-400, 400-500, 500+
+                                        if value <= boundaries[1]:
+                                            return f"{group_names[0]}그룹"
+                                        elif value <= boundaries[2]:
+                                            return f"{group_names[1]}그룹"
+                                        else:
+                                            return f"{group_names[2]}그룹" if len(group_names) > 2 else f"{group_names[1]}그룹"
+                                    else:
+                                        # 일반적인 경우
+                                        for i, boundary in enumerate(boundaries[:-1]):
+                                            if value <= boundary:
+                                                return f"{group_names[min(i, len(group_names)-1)]}그룹"
+                                        return f"{group_names[-1]}그룹"
+                                
+                                # 범위 그룹 생성
+                                df_copy = df_facility.copy()
+                                df_copy['range_group'] = df_copy[value_col].apply(assign_group)
+                                
+                                # 그룹별 개수 계산
+                                range_counts = df_copy['range_group'].value_counts().reset_index()
+                                range_counts.columns = ['범위', '개수']
+                                
+                                # 파이차트 생성
+                                fig = px.pie(
+                                    range_counts,
+                                    names='범위',
+                                    values='개수',
+                                    title=f'{value_col} 값 기준 범위별 분포'
+                                )
+                                
+                                fig.update_traces(textposition='inside', textinfo='percent+label+value')
+                                fig.update_layout(height=500)
+                                
+                                st.plotly_chart(fig, use_container_width=True)
+                                
+                                # 상세 통계
+                                with st.expander("📊 상세 통계"):
+                                    col1, col2 = st.columns(2)
+                                    
+                                    with col1:
+                                        st.markdown("**개수 및 비율:**")
+                                        range_counts['비율(%)'] = (range_counts['개수'] / range_counts['개수'].sum() * 100).round(2)
+                                        st.dataframe(range_counts, use_container_width=True)
+                                    
+                                    with col2:
+                                        st.markdown("**실제 값 통계:**")
+                                        stats_list = []
+                                        for group in range_counts['범위']:
+                                            group_data = df_copy[df_copy['range_group'] == group][value_col]
+                                            stats_list.append({
+                                                '범위': group,
+                                                '평균': group_data.mean() if len(group_data) > 0 else 0,
+                                                '최소': group_data.min() if len(group_data) > 0 else 0,
+                                                '최대': group_data.max() if len(group_data) > 0 else 0
+                                            })
+                                        stats_df = pd.DataFrame(stats_list)
+                                        st.dataframe(stats_df, use_container_width=True)
+                                
+                                # 인사이트
+                                total = range_counts['개수'].sum()
+                                max_group = range_counts.loc[range_counts['개수'].idxmax(), '범위']
+                                max_count = range_counts['개수'].max()
+                                
+                                insights_text = f"""
+**🎯 다중 범위 분포 인사이트:**
+- 전체 데이터: {total:,}개
+- 총 {len(range_counts)}개 그룹
+- 가장 많은 그룹: **{max_group}** ({max_count:,}개, {max_count/total*100:.1f}%)
+- 경계값: {boundaries}
+                                """
+                                
+                                st.success(insights_text)
+                                
+                                # 코드 생성
+                                range_data_code = f"""# 다중 범위 기반 데이터 처리
+import pandas as pd
+
+# 1. 원본 데이터 로드
+df = pd.read_csv('your_file.csv')
+print(f"원본 데이터: {{len(df):,}}행")
+
+# 2. 범위 그룹 할당 함수
+boundaries = {boundaries}
+group_names = {group_names}
+
+def assign_group(value):
+    # 사용자 정의 로직
+    if value <= boundaries[1]:
+        return f"{{group_names[0]}}그룹"
+    elif value <= boundaries[2]:
+        return f"{{group_names[1]}}그룹"
+    else:
+        return f"{{group_names[2]}}그룹"
+
+# 3. 범위 그룹 생성
+df['range_group'] = df['{value_col}'].apply(assign_group)
+
+# 4. 그룹별 개수 계산
+range_counts = df['range_group'].value_counts().reset_index()
+range_counts.columns = ['범위', '개수']
+
+print(range_counts)
+"""
+                                
+                                range_code = f"""# 다중 범위 파이차트 생성
+import plotly.express as px
+
+fig = px.pie(
+    range_counts,
+    names='범위',
+    values='개수',
+    title='{value_col} 값 기준 범위별 분포'
+)
+
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+fig.update_layout(height=500)
+
+fig.show()
+"""
+                                
+                                # 히스토리 저장
+                                add_to_full_history(
+                                    question=user_question,
+                                    result_type="다중범위_파이차트",
+                                    figure=fig,
+                                    data=range_counts,
+                                    insights=insights_text,
+                                    code=range_code,
+                                    data_code=range_data_code,
+                                    chart_type="파이차트",
+                                    time_unit="N/A"
+                                )
+                                
+                            except Exception as e:
+                                st.error(f"❌ 다중 범위 파이차트 생성 실패: {e}")
+                                log_error("MultiRangePieChartError", "다중 범위 파이차트 오류", str(e))
+                        
+                        else:
+                            st.error("❌ 분석할 수치 컬럼을 찾을 수 없습니다.")
+                            st.info(f"사용 가능한 수치 컬럼: {', '.join(numeric_cols)}")
+                    
+                    # === 단일 범위 기반 파이차트 (기존) ===
+                    elif range_based and threshold is not None:
                         st.info(f"🎯 범위 기반 그룹핑 감지: **{threshold}** 기준")
                         
                         # 수치형 컬럼 찾기
