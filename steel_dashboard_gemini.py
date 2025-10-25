@@ -1341,7 +1341,178 @@ print(time_data)
                 elif chart_type == "pie" and wants_graph:
                     st.markdown("### 🥧 파이차트 분석")
                     
-                    # 범주형 컬럼 찾기
+                    # === 범위 기반 파이차트 감지 ===
+                    import re
+                    
+                    # "400 이하", "400 초과", "400이하와 400초과" 등 패턴 감지
+                    range_patterns = [
+                        r'(\d+)\s*이하.*?(\d+)\s*초과',  # "400이하 400초과"
+                        r'(\d+)\s*초과.*?(\d+)\s*이하',  # "400초과 400이하"
+                        r'(\d+)\s*이하',                 # "400이하"
+                        r'(\d+)\s*초과',                 # "400초과"
+                        r'(\d+)\s*미만',                 # "400미만"
+                        r'(\d+)\s*이상',                 # "400이상"
+                    ]
+                    
+                    range_based = False
+                    threshold = None
+                    
+                    for pattern in range_patterns:
+                        match = re.search(pattern, user_question)
+                        if match:
+                            range_based = True
+                            threshold = int(match.group(1))
+                            break
+                    
+                    # === 범위 기반 파이차트 ===
+                    if range_based and threshold is not None:
+                        st.info(f"🎯 범위 기반 그룹핑 감지: **{threshold}** 기준")
+                        
+                        # 수치형 컬럼 찾기
+                        value_col = None
+                        if mentioned_col:
+                            value_col = mentioned_col
+                        elif numeric_cols:
+                            for col in numeric_cols:
+                                if any(kw in col.lower() for kw in ['wgt', 'unit', 'cnt', 'count', 'sum', 'total']):
+                                    value_col = col
+                                    break
+                            if not value_col:
+                                value_col = numeric_cols[0]
+                            st.info(f"ℹ️ 분석 컬럼: **{value_col}**")
+                        
+                        if value_col:
+                            try:
+                                # 범위 기반 그룹 생성
+                                df_copy = df_facility.copy()
+                                df_copy['range_group'] = df_copy[value_col].apply(
+                                    lambda x: f'{threshold} 이하' if x <= threshold else f'{threshold} 초과'
+                                )
+                                
+                                # 그룹별 개수 계산
+                                range_counts = df_copy['range_group'].value_counts().reset_index()
+                                range_counts.columns = ['범위', '개수']
+                                
+                                # 파이차트 생성
+                                fig = px.pie(
+                                    range_counts,
+                                    names='범위',
+                                    values='개수',
+                                    title=f'{value_col} 값 기준 범위별 분포 (기준: {threshold})'
+                                )
+                                
+                                fig.update_traces(textposition='inside', textinfo='percent+label+value')
+                                fig.update_layout(height=500)
+                                
+                                st.plotly_chart(fig, use_container_width=True)
+                                
+                                # 상세 통계
+                                with st.expander("📊 상세 통계"):
+                                    col1, col2 = st.columns(2)
+                                    
+                                    with col1:
+                                        st.markdown("**개수 및 비율:**")
+                                        range_counts['비율(%)'] = (range_counts['개수'] / range_counts['개수'].sum() * 100).round(2)
+                                        st.dataframe(range_counts, use_container_width=True)
+                                    
+                                    with col2:
+                                        st.markdown("**실제 값 통계:**")
+                                        group1 = df_copy[df_copy[value_col] <= threshold][value_col]
+                                        group2 = df_copy[df_copy[value_col] > threshold][value_col]
+                                        
+                                        stats_df = pd.DataFrame({
+                                            '범위': [f'{threshold} 이하', f'{threshold} 초과'],
+                                            '평균': [group1.mean() if len(group1) > 0 else 0, 
+                                                    group2.mean() if len(group2) > 0 else 0],
+                                            '최소': [group1.min() if len(group1) > 0 else 0, 
+                                                    group2.min() if len(group2) > 0 else 0],
+                                            '최대': [group1.max() if len(group1) > 0 else 0, 
+                                                    group2.max() if len(group2) > 0 else 0]
+                                        })
+                                        st.dataframe(stats_df, use_container_width=True)
+                                
+                                # 인사이트
+                                total = range_counts['개수'].sum()
+                                group1_cnt = range_counts[range_counts['범위'] == f'{threshold} 이하']['개수'].values[0] if f'{threshold} 이하' in range_counts['범위'].values else 0
+                                group2_cnt = range_counts[range_counts['범위'] == f'{threshold} 초과']['개수'].values[0] if f'{threshold} 초과' in range_counts['범위'].values else 0
+                                
+                                insights_text = f"""
+**🎯 범위별 분포 인사이트:**
+- 전체 데이터: {total:,}개
+- {threshold} 이하: {group1_cnt:,}개 ({group1_cnt/total*100:.1f}%)
+- {threshold} 초과: {group2_cnt:,}개 ({group2_cnt/total*100:.1f}%)
+- 기준값: {threshold}
+                                """
+                                
+                                if group1_cnt > group2_cnt:
+                                    insights_text += f"\n→ **{threshold} 이하** 구간이 더 많습니다 ({group1_cnt/group2_cnt:.1f}배)"
+                                elif group2_cnt > group1_cnt:
+                                    insights_text += f"\n→ **{threshold} 초과** 구간이 더 많습니다 ({group2_cnt/group1_cnt:.1f}배)"
+                                else:
+                                    insights_text += f"\n→ 두 구간이 비슷합니다"
+                                
+                                st.success(insights_text)
+                                
+                                # 코드 생성
+                                range_data_code = f"""# 범위 기반 데이터 처리
+import pandas as pd
+
+# 1. 원본 데이터 로드
+df = pd.read_csv('your_file.csv')
+print(f"원본 데이터: {{len(df):,}}행")
+
+# 2. 범위 기반 그룹 생성
+df['range_group'] = df['{value_col}'].apply(
+    lambda x: '{threshold} 이하' if x <= {threshold} else '{threshold} 초과'
+)
+
+# 3. 그룹별 개수 계산
+range_counts = df['range_group'].value_counts().reset_index()
+range_counts.columns = ['범위', '개수']
+
+print(range_counts)
+"""
+                                
+                                range_code = f"""# 범위 기반 파이차트 생성
+import plotly.express as px
+
+fig = px.pie(
+    range_counts,
+    names='범위',
+    values='개수',
+    title='{value_col} 값 기준 범위별 분포 (기준: {threshold})'
+)
+
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+fig.update_layout(height=500)
+
+fig.show()
+"""
+                                
+                                # 히스토리 저장
+                                add_to_full_history(
+                                    question=user_question,
+                                    result_type="범위별_파이차트",
+                                    figure=fig,
+                                    data=range_counts,
+                                    insights=insights_text,
+                                    code=range_code,
+                                    data_code=range_data_code,
+                                    chart_type="파이차트",
+                                    time_unit="N/A"
+                                )
+                                
+                            except Exception as e:
+                                st.error(f"❌ 범위 기반 파이차트 생성 실패: {e}")
+                                log_error("RangePieChartError", "범위 파이차트 오류", str(e))
+                        
+                        else:
+                            st.error("❌ 분석할 수치 컬럼을 찾을 수 없습니다.")
+                            st.info(f"사용 가능한 수치 컬럼: {', '.join(numeric_cols)}")
+                    
+                    # === 일반 파이차트 (기존 로직) ===
+                    else:
+                        # 범주형 컬럼 찾기
                     cat_col = None
                     cat_cols = df_facility.select_dtypes(include=['object']).columns.tolist()
                     
