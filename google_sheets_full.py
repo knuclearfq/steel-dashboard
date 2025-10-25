@@ -34,12 +34,48 @@ def get_apps_script_config():
 
 @st.cache_data(ttl=60)
 def load_history_summary(web_app_url, api_key):
-    """히스토리 요약 목록 불러오기"""
+    """히스토리 요약 목록 불러오기 (가벼운 버전 - 그래프용)"""
     try:
         response = requests.get(
             web_app_url,
-            params={"api_key": api_key},
+            params={
+                "api_key": api_key,
+                "mode": "summary"  # 가벼운 데이터만
+            },
             timeout=15
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            
+            if result.get("success"):
+                data = result.get("data", [])
+                if data:
+                    return pd.DataFrame(data)
+                else:
+                    return pd.DataFrame()
+            else:
+                st.error(f"❌ API 에러: {result.get('error')}")
+                return pd.DataFrame()
+        else:
+            st.error(f"❌ HTTP 에러: {response.status_code}")
+            return pd.DataFrame()
+            
+    except Exception as e:
+        st.error(f"❌ 연결 실패: {e}")
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
+def load_full_history(web_app_url, api_key):
+    """전체 히스토리 불러오기 (무거운 버전 - 상세정보용)"""
+    try:
+        response = requests.get(
+            web_app_url,
+            params={
+                "api_key": api_key,
+                "mode": "full"  # 전체 데이터
+            },
+            timeout=30
         )
         
         if response.status_code == 200:
