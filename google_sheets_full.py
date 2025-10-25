@@ -136,7 +136,7 @@ def save_full_history(web_app_url, api_key, history_entry):
             "result_type": history_entry.get("result_type", ""),
             "time_unit": history_entry.get("time_unit", ""),
             "chart_type": history_entry.get("chart_type", ""),
-            "insights": (history_entry.get("insights", "") or "")[:500],
+            "insights": (history_entry.get("insights", "") or "")[:50000],  # 인사이트 최대 50000자
             "data_json": data_json,
             "data_processing_code": history_entry.get("data_code", ""),
             "graph_code": history_entry.get("code", ""),
@@ -383,22 +383,27 @@ def render_full_history_ui():
             # 최근 히스토리 목록
             st.divider()
             st.markdown("#### 📋 최근 히스토리")
+            st.caption("💡 아래 버튼을 클릭하면 ID가 자동으로 입력됩니다 (위로 스크롤)")
             
             recent_df = load_history_summary(web_app_url, api_key)
             if not recent_df.empty:
                 recent_5 = recent_df.head(5)
                 
                 for idx, row in recent_5.iterrows():
-                    col1, col2 = st.columns([4, 1])
-                    
-                    with col1:
-                        st.write(f"**{row['타임스탬프']}** - {row['질문']}")
-                        st.caption(f"ID: `{row['ID']}` | {row['그래프타입']} | {row['시간단위']}")
-                    
-                    with col2:
-                        if st.button("🔄 재현", key=f"quick_reproduce_{row['ID']}"):
-                            st.session_state.selected_reproduce_id = row['ID']
-                            st.rerun()
+                    with st.container():
+                        col1, col2 = st.columns([5, 2])
+                        
+                        with col1:
+                            st.write(f"**{row['타임스탬프']}** - {row['질문'][:50]}{'...' if len(str(row['질문'])) > 50 else ''}")
+                            st.caption(f"ID: `{row['ID']}` | {row.get('그래프타입', 'N/A')} | {row.get('시간단위', 'N/A')}")
+                        
+                        with col2:
+                            if st.button(f"📋 {row['ID'][:6]}... 복사", key=f"quick_reproduce_{row['ID']}", use_container_width=True):
+                                st.session_state.selected_reproduce_id = row['ID']
+                                st.info(f"✅ ID 복사됨: {row['ID']} (위로 스크롤하여 '재현하기' 클릭)")
+                                st.rerun()
+                        
+                        st.divider()
         
         # === 탭 3: 통계 ===
         with tab3:
