@@ -1526,62 +1526,131 @@ fig.show()
                             cat_col = cat_cols[0]
                             st.info(f"ℹ️ 범주형 컬럼 자동 선택: **{cat_col}**")
                         
-                        # 수치형 컬럼 찾기
+                        # === 핵심: 수치형 컬럼이 질문에 명시되었는지 확인 ===
                         value_col = None
+                        use_count_based = True  # 기본은 개수 기반
+                        
+                        # 질문에 수치형 컬럼이 명시되어 있으면 값 기반
                         if mentioned_col:
                             value_col = mentioned_col
-                        elif numeric_cols:
-                            # 컬럼명에 wgt, unit, cnt 등이 있으면 우선
-                            for col in numeric_cols:
-                                if any(kw in col.lower() for kw in ['wgt', 'unit', 'cnt', 'count', 'sum', 'total']):
-                                    value_col = col
-                                    break
-                            
-                            if not value_col:
-                                value_col = numeric_cols[0]
-                            
-                            st.info(f"ℹ️ 수치 컬럼 자동 선택: **{value_col}**")
+                            use_count_based = False
+                            st.info(f"ℹ️ 값 기반 파이차트: **{value_col}** 합계 사용")
+                        else:
+                            st.info(f"ℹ️ 개수 기반 파이차트: **{cat_col}** 범주별 개수")
                         
-                        if cat_col and value_col:
+                        if cat_col:
                             try:
-                                # 범주별 합계 계산
-                                pie_data = df_facility.groupby(cat_col)[value_col].sum().reset_index()
-                                pie_data.columns = [cat_col, f'{value_col}_합계']
+                                # === 개수 기반 파이차트 ===
+                                if use_count_based:
+                                    # 범주별 개수 계산
+                                    pie_data = df_facility[cat_col].value_counts().reset_index()
+                                    pie_data.columns = [cat_col, '개수']
+                                    
+                                    # 파이차트 생성
+                                    fig = px.pie(
+                                        pie_data,
+                                        names=cat_col,
+                                        values='개수',
+                                        title=f'{cat_col}별 개수 비율'
+                                    )
+                                    
+                                    fig.update_traces(textposition='inside', textinfo='percent+label+value')
+                                    fig.update_layout(height=500)
+                                    
+                                    st.plotly_chart(fig, use_container_width=True)
+                                    
+                                    # 데이터 테이블
+                                    with st.expander("📊 데이터 테이블"):
+                                        pie_data['비율(%)'] = (pie_data['개수'] / pie_data['개수'].sum() * 100).round(2)
+                                        st.dataframe(pie_data, use_container_width=True)
+                                    
+                                    # 인사이트
+                                    max_cat = pie_data.loc[pie_data['개수'].idxmax(), cat_col]
+                                    max_val = pie_data['개수'].max()
+                                    max_pct = (max_val / pie_data['개수'].sum() * 100)
+                                    total_count = pie_data['개수'].sum()
+                                    
+                                    insights_text = f"""
+**🎯 파이차트 인사이트 (개수 기반):**
+- 가장 많은 범주: **{max_cat}** ({max_val:,}개, {max_pct:.1f}%)
+- 총 {len(pie_data)}개 범주
+- 전체 개수: {total_count:,}개
+                                    """
+                                    
+                                    st.success(insights_text)
+                                    
+                                    # 코드 생성
+                                    pie_data_code = f"""# 개수 기반 데이터 처리
+import pandas as pd
+
+# 1. 원본 데이터 로드
+df = pd.read_csv('your_file.csv')
+print(f"원본 데이터: {{len(df):,}}행")
+
+# 2. 범주별 개수 계산
+pie_data = df['{cat_col}'].value_counts().reset_index()
+pie_data.columns = ['{cat_col}', '개수']
+
+print(f"처리된 데이터:")
+print(pie_data)
+"""
+                                    
+                                    pie_code = f"""# 파이차트 생성 (개수 기반)
+import plotly.express as px
+
+fig = px.pie(
+    pie_data,
+    names='{cat_col}',
+    values='개수',
+    title='{cat_col}별 개수 비율'
+)
+
+fig.update_traces(textposition='inside', textinfo='percent+label+value')
+fig.update_layout(height=500)
+
+fig.show()
+"""
                                 
-                                # 파이차트 생성
-                                fig = px.pie(
-                                    pie_data,
-                                    names=cat_col,
-                                    values=f'{value_col}_합계',
-                                    title=f'{cat_col}별 {value_col} 비율'
-                                )
-                                
-                                fig.update_traces(textposition='inside', textinfo='percent+label')
-                                fig.update_layout(height=500)
-                                
-                                st.plotly_chart(fig, use_container_width=True)
-                                
-                                # 데이터 테이블
-                                with st.expander("📊 데이터 테이블"):
-                                    pie_data['비율(%)'] = (pie_data[f'{value_col}_합계'] / pie_data[f'{value_col}_합계'].sum() * 100).round(2)
-                                    st.dataframe(pie_data, use_container_width=True)
-                                
-                                # 인사이트
-                                max_cat = pie_data.loc[pie_data[f'{value_col}_합계'].idxmax(), cat_col]
-                                max_val = pie_data[f'{value_col}_합계'].max()
-                                max_pct = (max_val / pie_data[f'{value_col}_합계'].sum() * 100)
-                                
-                                insights_text = f"""
-**🎯 파이차트 인사이트:**
+                                # === 값 기반 파이차트 ===
+                                else:
+                                    # 범주별 합계 계산
+                                    pie_data = df_facility.groupby(cat_col)[value_col].sum().reset_index()
+                                    pie_data.columns = [cat_col, f'{value_col}_합계']
+                                    
+                                    # 파이차트 생성
+                                    fig = px.pie(
+                                        pie_data,
+                                        names=cat_col,
+                                        values=f'{value_col}_합계',
+                                        title=f'{cat_col}별 {value_col} 비율'
+                                    )
+                                    
+                                    fig.update_traces(textposition='inside', textinfo='percent+label')
+                                    fig.update_layout(height=500)
+                                    
+                                    st.plotly_chart(fig, use_container_width=True)
+                                    
+                                    # 데이터 테이블
+                                    with st.expander("📊 데이터 테이블"):
+                                        pie_data['비율(%)'] = (pie_data[f'{value_col}_합계'] / pie_data[f'{value_col}_합계'].sum() * 100).round(2)
+                                        st.dataframe(pie_data, use_container_width=True)
+                                    
+                                    # 인사이트
+                                    max_cat = pie_data.loc[pie_data[f'{value_col}_합계'].idxmax(), cat_col]
+                                    max_val = pie_data[f'{value_col}_합계'].max()
+                                    max_pct = (max_val / pie_data[f'{value_col}_합계'].sum() * 100)
+                                    
+                                    insights_text = f"""
+**🎯 파이차트 인사이트 (값 기반):**
 - 가장 큰 비중: **{max_cat}** ({max_val:,.2f}, {max_pct:.1f}%)
 - 총 {len(pie_data)}개 범주
 - 전체 합계: {pie_data[f'{value_col}_합계'].sum():,.2f}
-                                """
-                                
-                                st.success(insights_text)
-                                
-                                # 코드 생성
-                                pie_data_code = f"""# 데이터 처리
+                                    """
+                                    
+                                    st.success(insights_text)
+                                    
+                                    # 코드 생성
+                                    pie_data_code = f"""# 값 기반 데이터 처리
 import pandas as pd
 
 # 1. 원본 데이터 로드
@@ -1592,11 +1661,11 @@ print(f"원본 데이터: {{len(df):,}}행")
 pie_data = df.groupby('{cat_col}')['{value_col}'].sum().reset_index()
 pie_data.columns = ['{cat_col}', '{value_col}_합계']
 
-print(f"처리된 데이터: {{len(pie_data):,}}행")
+print(f"처리된 데이터:")
 print(pie_data)
 """
-                                
-                                pie_code = f"""# 파이차트 생성
+                                    
+                                    pie_code = f"""# 파이차트 생성 (값 기반)
 import plotly.express as px
 
 fig = px.pie(
@@ -1630,17 +1699,16 @@ fig.show()
                                 log_error("PieChartError", "파이차트 생성 오류", str(e))
                         
                         else:
-                            st.error("❌ 파이차트에 필요한 컬럼을 찾을 수 없습니다.")
+                            st.error("❌ 파이차트에 필요한 범주형 컬럼을 찾을 수 없습니다.")
                             st.info(f"""
 **파이차트 요구사항:**
 - 범주형 컬럼: {', '.join(cat_cols) if cat_cols else '없음'}
-- 수치형 컬럼: {', '.join(numeric_cols) if numeric_cols else '없음'}
 
 **💡 질문 예시:**
-- "md_shft별 prod_wgt 파이차트"
-- "md_shft 파이차트" (자동으로 적절한 수치 컬럼 선택)
+- "md_shft 파이차트" → 개수 기반
+- "md_shft별 prod_wgt 파이차트" → 값 기반
                             """)
-                            log_error("PieChartError", "필요 컬럼 없음", f"범주: {cat_cols}, 수치: {numeric_cols}")
+                            log_error("PieChartError", "필요 컬럼 없음", f"범주: {cat_cols}")
                 
                 # === 우선순위 2: 간단한 통계 ===
                 elif "행" in user_question or "row" in user_question_lower:
