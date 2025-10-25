@@ -1341,48 +1341,42 @@ print(time_data)
                 elif chart_type == "pie" and wants_graph:
                     st.markdown("### 🥧 파이차트 분석")
                     
-                    # === 범위 기반 파이차트 감지 ===
+                    # === 범위 기반 파이차트 감지 (개선) ===
                     import re
                     
-                    # 다중 구간 패턴 감지 (A그룹, B그룹, C그룹 등)
-                    multi_range_pattern = r'(\d+)\s*[-~]\s*(\d+).*?[A-Z가-힣]그룹.*?(\d+)\s*[-~]\s*(\d+).*?[A-Z가-힣]그룹'
-                    multi_match = re.search(multi_range_pattern, user_question)
-                    
-                    # 모든 숫자 추출 (0, 400, 500 등)
-                    all_numbers = re.findall(r'\d+', user_question)
-                    all_numbers = [int(n) for n in all_numbers if int(n) < 10000]  # 날짜 제외
-                    
-                    # 그룹 이름 추출 (A그룹, B그룹, C그룹 등)
-                    group_names = re.findall(r'([A-Z가-힣])그룹', user_question)
+                    # 범위 키워드 감지
+                    range_keywords = ['이하', '초과', '이상', '미만', '그룹']
+                    has_range_keyword = any(kw in user_question for kw in range_keywords)
                     
                     range_based = False
                     multi_range = False
+                    threshold = None
+                    all_numbers = []
+                    group_names = []
                     
-                    # 다중 구간 감지
-                    if len(all_numbers) >= 2 and len(group_names) >= 2:
-                        range_based = True
-                        multi_range = True
-                        st.info(f"🎯 다중 범위 그룹핑 감지: {len(group_names)}개 그룹 ({all_numbers})")
-                    
-                    # 단일 기준값 패턴 (기존)
-                    elif not multi_range:
-                        range_patterns = [
-                            r'(\d+)\s*이하.*?(\d+)\s*초과',  # "400이하 400초과"
-                            r'(\d+)\s*초과.*?(\d+)\s*이하',  # "400초과 400이하"
-                            r'(\d+)\s*이하',                 # "400이하"
-                            r'(\d+)\s*초과',                 # "400초과"
-                            r'(\d+)\s*미만',                 # "400미만"
-                            r'(\d+)\s*이상',                 # "400이상"
-                        ]
+                    if has_range_keyword:
+                        st.info("🔍 범위 키워드 감지!")
                         
-                        threshold = None
+                        # 숫자 추출 (연도 제외)
+                        all_numbers = re.findall(r'\b(\d{1,4})\b', user_question)
+                        all_numbers = [int(n) for n in all_numbers if 0 < int(n) < 10000 and int(n) != 2025 and int(n) != 2024]
                         
-                        for pattern in range_patterns:
-                            match = re.search(pattern, user_question)
-                            if match:
-                                range_based = True
-                                threshold = int(match.group(1))
-                                break
+                        # 그룹 이름 추출
+                        group_names = re.findall(r'([A-Z가-힣])그룹', user_question)
+                        
+                        # 다중 그룹 감지
+                        if len(group_names) >= 2:
+                            range_based = True
+                            multi_range = True
+                            st.info(f"🎯 다중 범위 감지: {len(group_names)}개 그룹, 경계값: {all_numbers}")
+                        
+                        # 단일 범위 감지
+                        elif len(all_numbers) >= 1:
+                            range_based = True
+                            threshold = all_numbers[0]
+                            st.info(f"🎯 단일 범위 감지: 기준값 {threshold}")
+                        else:
+                            st.warning("⚠️ 범위 키워드는 있지만 기준값을 찾을 수 없습니다.")
                     
                     # === 다중 범위 기반 파이차트 ===
                     if range_based and multi_range:
