@@ -9,6 +9,7 @@ import re
 import traceback
 import uuid
 from datetime import datetime
+from google_sheets_full import render_full_history_ui, add_to_full_history
 
 # 경고 메시지 무시
 warnings.filterwarnings('ignore')
@@ -929,14 +930,16 @@ print(f"피벗 테이블: {{len(pivot_table)}}행 × {{len(pivot_table.columns)}
 print(pivot_table)
 """
                         
-                        add_to_history(
+                        add_to_full_history(
                             question=user_question,
                             result_type=f"계열별_{time_unit_kr}_추이",
                             figure=fig,
                             data=multi,
                             insights=insights_text,
                             code=multi_code,
-                            data_code=multi_data_code
+                            data_code=multi_data_code,
+                            chart_type=chart_type_kr,
+                            time_unit=time_unit_kr
                         )
                     
                     else:
@@ -1320,32 +1323,34 @@ print(f"시간별 집계: {{len(time_data):,}}행")
 print(time_data)
 """
                         
-                        add_to_history(
+                        add_to_full_history(
                             question=user_question,
                             result_type=f"{time_unit_kr}_추이",
                             figure=fig,
                             data=time_data,
                             insights=insights_text,
                             code=single_code,
-                            data_code=single_data_code
+                            data_code=single_data_code,
+                            chart_type=chart_type_kr,
+                            time_unit=time_unit_kr
                         )
                 
                 # === 우선순위 2: 간단한 통계 ===
                 elif "행" in user_question or "row" in user_question_lower:
                     result = f"📊 데이터 행 수: **{len(df_facility):,}개**"
                     st.success(result)
-                    add_to_history(user_question, "통계", insights=result)
+                    add_to_full_history(user_question, "통계", insights=result, chart_type="N/A", time_unit="N/A")
                 
                 elif "컬럼" in user_question and not wants_graph:
                     result = f"📋 컬럼: {', '.join(df_facility.columns.tolist())}"
                     st.success(result)
-                    add_to_history(user_question, "통계", insights=result)
+                    add_to_full_history(user_question, "통계", insights=result, chart_type="N/A", time_unit="N/A")
                 
                 elif "평균" in user_question and mentioned_col and not wants_graph and not is_time_series:
                     avg = df_facility[mentioned_col].mean()
                     result = f"📊 {mentioned_col} 평균: **{avg:,.2f}**"
                     st.success(result)
-                    add_to_history(user_question, "통계", insights=result)
+                    add_to_full_history(user_question, "통계", insights=result, chart_type="N/A", time_unit="N/A")
                 
                 elif "결측치" in user_question:
                     null_cols = df_facility.isnull().sum()
@@ -1353,11 +1358,11 @@ print(time_data)
                     if len(null_cols) > 0:
                         st.write("**결측치가 있는 컬럼:**")
                         st.dataframe(null_cols)
-                        add_to_history(user_question, "결측치", data=pd.DataFrame(null_cols))
+                        add_to_full_history(user_question, "결측치", data=pd.DataFrame(null_cols), chart_type="N/A", time_unit="N/A")
                     else:
                         result = "✅ 결측치가 없습니다!"
                         st.success(result)
-                        add_to_history(user_question, "결측치", insights=result)
+                        add_to_full_history(user_question, "결측치", insights=result, chart_type="N/A", time_unit="N/A")
                 
                 else:
                     st.warning("⚠️ 질문을 이해하지 못했습니다.")
@@ -1459,4 +1464,8 @@ if len(st.session_state.error_logs) > 0:
             st.rerun()
 
 st.divider()
-st.caption("🔧 철강 설비 AI 대시보드 v11.1 Final | 모든 그래프 타입 + 범위 필터링 | Gemini 2.5")
+st.caption("🔧 철강 설비 AI 대시보드 v12.0 | Google Sheets 완전 재현 시스템 | Gemini 2.5")
+
+# === Google Sheets 완전 히스토리 관리 UI ===
+st.divider()
+render_full_history_ui()
