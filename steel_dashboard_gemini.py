@@ -2028,6 +2028,15 @@ if len(st.session_state.error_logs) > 0:
 st.divider()
 st.caption("🔧 철강 설비 AI 대시보드 v12.0 | Google Sheets 완전 재현 시스템 | Gemini 2.5")
 
-# === Google Sheets 완전 히스토리 관리 UI ===
+# === Google Sheets 완전 히스토리 관리 UI (지연 로딩) ===
 st.divider()
-render_full_history_ui()
+
+# 토글 버튼으로 히스토리 표시 여부 제어
+show_history = st.checkbox("📊 분석 히스토리 보기", value=False, key="show_history_toggle")
+
+if show_history:
+    # 토글이 열릴 때만 히스토리 로딩
+    with st.spinner("🔄 히스토리 데이터 로딩 중..."):
+        render_full_history_ui()
+else:
+    st.info("💡 분석 히스토리를 보려면 위 체크박스를 클릭하세요.")
