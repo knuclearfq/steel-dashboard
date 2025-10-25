@@ -34,13 +34,13 @@ def get_apps_script_config():
 
 @st.cache_data(ttl=60)
 def load_history_summary(web_app_url, api_key):
-    """히스토리 요약 목록 불러오기 (가벼운 버전 - 그래프용)"""
+    """1단계: 히스토리 기본 정보만 (ID, 타임스탬프, 질문, 시간단위, 그래프타입)"""
     try:
         response = requests.get(
             web_app_url,
             params={
                 "api_key": api_key,
-                "mode": "summary"  # 가벼운 데이터만
+                "mode": "summary"
             },
             timeout=15
         )
@@ -65,9 +65,36 @@ def load_history_summary(web_app_url, api_key):
         st.error(f"❌ 연결 실패: {e}")
         return pd.DataFrame()
 
+def load_graph_by_id(web_app_url, api_key, history_id):
+    """2단계: 특정 ID의 그래프만 조회"""
+    try:
+        response = requests.get(
+            web_app_url,
+            params={
+                "api_key": api_key,
+                "mode": "graph",
+                "id": history_id
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            
+            if result.get("success"):
+                return result.get("data")
+            else:
+                return None
+        else:
+            return None
+            
+    except Exception as e:
+        st.error(f"❌ 그래프 로딩 실패: {e}")
+        return None
+
 @st.cache_data(ttl=60)
 def load_full_history(web_app_url, api_key):
-    """전체 히스토리 불러오기 (무거운 버전 - 상세정보용)"""
+    """3단계: 전체 히스토리 불러오기 (상세정보 - 모든 데이터)"""
     try:
         response = requests.get(
             web_app_url,
@@ -347,6 +374,32 @@ def render_full_history_ui():
                     showlegend=False
                 )
                 st.plotly_chart(fig, use_container_width=True)
+            
+            # 각 히스토리별 그래프 (토글로 표시)
+            st.markdown("#### 🔍 히스토리별 그래프")
+            
+            for idx, row in stats_df.iterrows():
+                history_id = row.get('ID', '')
+                question = row.get('질문', '')
+                
+                if not history_id:
+                    continue
+                
+                with st.expander(f"📊 {question[:50]}..."):
+                    # 그래프 로딩 버튼
+                    if st.button(f"그래프 보기", key=f"load_graph_{history_id}"):
+                        with st.spinner("그래프 로딩 중..."):
+                            graph_data = load_graph_by_id(web_app_url, api_key, history_id)
+                            
+                            if graph_data and graph_data.get('그래프_설정_JSON'):
+                                try:
+                                    graph_json = graph_data['그래프_설정_JSON']
+                                    fig = go.Figure(json.loads(graph_json))
+                                    st.plotly_chart(fig, use_container_width=True)
+                                except Exception as e:
+                                    st.error(f"그래프 로딩 실패: {e}")
+                            else:
+                                st.warning("그래프 데이터 없음")
         else:
             st.info("📭 아직 저장된 분석이 없습니다")
     
