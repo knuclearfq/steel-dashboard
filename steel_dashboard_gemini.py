@@ -1461,3 +1461,19 @@ if len(st.session_state.error_logs) > 0:
 
 st.divider()
 st.caption("🔧 철강 설비 AI 대시보드 v11.1 Final | 모든 그래프 타입 + 범위 필터링 | Gemini 2.5")
+
+# UI 추가
+render_full_history_ui()
+
+# 히스토리 저장 (기존 add_to_history 대체)
+add_to_full_history(
+    question=user_question,
+    result_type="계열별_월별_추이",
+    figure=fig,              # Plotly figure 객체
+    data=multi_df,           # pandas DataFrame
+    insights=insights_text,
+    code=graph_code,         # 그래프 생성 Python 코드
+    data_code=data_code,     # 데이터 처리 Python 코드
+    chart_type="막대그래프",
+    time_unit="월별"
+)
