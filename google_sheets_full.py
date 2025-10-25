@@ -136,7 +136,7 @@ def save_full_history(web_app_url, api_key, history_entry):
             "result_type": history_entry.get("result_type", ""),
             "time_unit": history_entry.get("time_unit", ""),
             "chart_type": history_entry.get("chart_type", ""),
-            "insights": (history_entry.get("insights", "") or "")[:50000],  # 인사이트 최대 50000자
+            "insights": (history_entry.get("insights", "") or "")[:10000],  # 인사이트 최대 10,000자 (현실적 제한)
             "data_json": data_json,
             "data_processing_code": history_entry.get("data_code", ""),
             "graph_code": history_entry.get("code", ""),
@@ -322,17 +322,100 @@ def render_full_history_ui():
                 else:
                     filtered_df = history_df
                 
-                # 표시
-                st.dataframe(
-                    filtered_df,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "ID": st.column_config.TextColumn("ID", width="small"),
-                        "타임스탬프": st.column_config.TextColumn("시간", width="medium"),
-                        "질문": st.column_config.TextColumn("질문", width="large"),
-                    }
-                )
+                # === 항목별 카드 표시 (그래프 자동 표시) ===
+                st.markdown("---")
+                st.caption(f"💡 총 {len(filtered_df)}개 항목 | 그래프는 자동 표시, 상세정보는 펼쳐보기")
+                
+                for idx, row in filtered_df.iterrows():
+                    # 각 히스토리를 카드 형태로
+                    with st.container():
+                        # === 헤더: 질문 + 메타정보 ===
+                        col_title, col_meta = st.columns([7, 3])
+                        
+                        with col_title:
+                            st.markdown(f"### 📝 {row['질문']}")
+                        
+                        with col_meta:
+                            meta_badges = []
+                            if '그래프타입' in row and row['그래프타입'] and row['그래프타입'] != 'N/A':
+                                meta_badges.append(f"📈 {row['그래프타입']}")
+                            if '시간단위' in row and row['시간단위'] and row['시간단위'] != 'N/A':
+                                meta_badges.append(f"🕐 {row['시간단위']}")
+                            if meta_badges:
+                                st.info(" | ".join(meta_badges))
+                        
+                        st.caption(f"🕐 {row['타임스탬프']} | ID: `{row['ID']}`")
+                        
+                        # === 그래프 자동 표시 ===
+                        try:
+                            # 완전한 데이터 가져오기
+                            full_data = load_full_history_by_id(web_app_url, api_key, row['ID'])
+                            
+                            if full_data and full_data.get('그래프_설정_JSON'):
+                                try:
+                                    import plotly.graph_objects as go
+                                    fig_dict = json.loads(full_data['그래프_설정_JSON'])
+                                    fig = go.Figure(fig_dict)
+                                    st.plotly_chart(fig, use_container_width=True, key=f"graph_{row['ID']}")
+                                except Exception as e:
+                                    st.warning(f"⚠️ 그래프 로드 실패: {e}")
+                            else:
+                                st.info("📊 그래프 없음")
+                        
+                        except Exception as e:
+                            st.error(f"❌ 데이터 로드 실패: {e}")
+                        
+                        # === 상세정보 Expander ===
+                        with st.expander(f"📋 상세정보 보기 (ID: {row['ID']})"):
+                            if full_data:
+                                # 탭으로 구분
+                                detail_tabs = st.tabs(["💡 인사이트", "📊 데이터", "💻 코드"])
+                                
+                                # 탭1: 인사이트
+                                with detail_tabs[0]:
+                                    insights = full_data.get('인사이트요약', 'N/A')
+                                    if insights and insights != 'N/A':
+                                        st.markdown(insights)
+                                    else:
+                                        st.info("인사이트 없음")
+                                
+                                # 탭2: 데이터
+                                with detail_tabs[1]:
+                                    data_json = full_data.get('데이터_JSON')
+                                    if data_json and data_json != 'N/A':
+                                        try:
+                                            data_obj = json.loads(data_json)
+                                            if isinstance(data_obj, list):
+                                                df_display = pd.DataFrame(data_obj)
+                                                st.dataframe(df_display, use_container_width=True)
+                                            else:
+                                                st.json(data_obj)
+                                        except:
+                                            st.code(data_json, language="json")
+                                    else:
+                                        st.info("데이터 없음")
+                                
+                                # 탭3: 코드
+                                with detail_tabs[2]:
+                                    # 데이터 처리 코드
+                                    data_code = full_data.get('데이터_처리_코드')
+                                    if data_code and data_code != 'N/A':
+                                        st.markdown("**📊 데이터 처리 코드:**")
+                                        st.code(data_code, language="python")
+                                    
+                                    # 그래프 생성 코드
+                                    graph_code = full_data.get('그래프_생성_코드')
+                                    if graph_code and graph_code != 'N/A':
+                                        st.markdown("**📈 그래프 생성 코드:**")
+                                        st.code(graph_code, language="python")
+                                    
+                                    if not data_code and not graph_code:
+                                        st.info("코드 없음")
+                            else:
+                                st.warning("상세 정보를 불러올 수 없습니다")
+                        
+                        # 구분선
+                        st.markdown("---")
                 
             else:
                 st.info("📭 저장된 히스토리가 없습니다")
