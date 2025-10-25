@@ -445,7 +445,8 @@ if df_facility is not None:
                         date_col = col
                         break
                 
-                if not date_col and (wants_graph or is_time_series):
+                # 파이차트가 아니고 시계열 분석일 때만 날짜 컬럼 필수
+                if not date_col and (wants_graph or is_time_series) and chart_type != "pie":
                     st.error("❌ 날짜 컬럼을 찾을 수 없습니다. 컬럼명에 'date'가 포함되어야 합니다.")
                     log_error("ColumnNotFound", "날짜 컬럼 없음", f"사용 가능 컬럼: {df_facility.columns.tolist()}")
                 
@@ -456,7 +457,8 @@ if df_facility is not None:
                         mentioned_col = col
                         break
                 
-                if not mentioned_col and (wants_graph or is_time_series):
+                # 파이차트가 아닐 때만 수치 컬럼 필수
+                if not mentioned_col and (wants_graph or is_time_series) and chart_type != "pie":
                     st.error(f"❌ 분석할 수치 컬럼을 찾을 수 없습니다. 질문에 컬럼명을 포함해주세요: {', '.join(numeric_cols)}")
                     log_error("ColumnNotFound", "수치 컬럼 없음", f"질문: {user_question}")
                 
