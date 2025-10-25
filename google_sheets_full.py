@@ -136,7 +136,7 @@ def save_full_history(web_app_url, api_key, history_entry):
             "result_type": history_entry.get("result_type", ""),
             "time_unit": history_entry.get("time_unit", ""),
             "chart_type": history_entry.get("chart_type", ""),
-            "insights": (history_entry.get("insights", "") or "")[:10000],  # 인사이트 최대 10,000자 (현실적 제한)
+            "insights": (history_entry.get("insights", "") or "")[:500],
             "data_json": data_json,
             "data_processing_code": history_entry.get("data_code", ""),
             "graph_code": history_entry.get("code", ""),
@@ -256,38 +256,76 @@ def reproduce_history(full_history_data):
 # ============================================
 
 def render_full_history_ui():
-    """완전 재현 시스템 UI"""
+    """완전 재현 시스템 UI - 그래프는 항상 표시, 상세 정보는 토글"""
+    
+    st.divider()
+    st.markdown("## 📊 분석 히스토리")
+    
+    # 설정 확인
+    web_app_url, api_key = get_apps_script_config()
+    
+    if not web_app_url or not api_key:
+        st.warning("⚠️ Apps Script 설정이 필요합니다")
+        return
+    
+    # === 통계 요약 (항상 표시) ===
+    st.markdown("### 📈 저장 통계")
+    
+    try:
+        stats_df = load_history_summary(web_app_url, api_key)
+        
+        if not stats_df.empty:
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("총 분석 수", f"{len(stats_df):,}")
+            
+            with col2:
+                if "그래프타입" in stats_df.columns:
+                    most_common = stats_df["그래프타입"].mode()[0] if not stats_df["그래프타입"].mode().empty else "N/A"
+                    st.metric("가장 많이 사용한 그래프", most_common)
+            
+            with col3:
+                if "시간단위" in stats_df.columns:
+                    most_common_unit = stats_df["시간단위"].mode()[0] if not stats_df["시간단위"].mode().empty else "N/A"
+                    st.metric("가장 많이 사용한 시간단위", most_common_unit)
+            
+            # 그래프 타입 분포 (항상 표시)
+            if "그래프타입" in stats_df.columns:
+                st.markdown("#### 📊 그래프 타입 분포")
+                chart_counts = stats_df["그래프타입"].value_counts()
+                
+                # 막대 차트로 표시
+                fig = go.Figure(data=[
+                    go.Bar(
+                        x=chart_counts.index,
+                        y=chart_counts.values,
+                        text=chart_counts.values,
+                        textposition='auto',
+                    )
+                ])
+                fig.update_layout(
+                    height=300,
+                    xaxis_title="그래프 타입",
+                    yaxis_title="사용 횟수",
+                    showlegend=False
+                )
+                st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("📭 아직 저장된 분석이 없습니다")
+    
+    except Exception as e:
+        st.error(f"❌ 통계 로딩 실패: {e}")
     
     st.divider()
     
-    with st.expander("📊 Google Sheets 완전 히스토리 관리", expanded=False):
-        st.markdown("""
-        **🔄 완전 재현 시스템**
-        
-        저장되는 것:
-        - ✅ 분석 결과 (기본 정보)
-        - ✅ 데이터 테이블 (전체 DataFrame)
-        - ✅ 데이터 처리 코드 (Python)
-        - ✅ 그래프 생성 코드 (Plotly)
-        - ✅ 그래프 설정 (JSON)
-        - ✅ 인사이트
-        
-        → **언제든지 완벽하게 재현 가능!**
-        """)
-        
-        # 설정 확인
-        web_app_url, api_key = get_apps_script_config()
-        
-        if not web_app_url or not api_key:
-            st.warning("⚠️ Apps Script 설정이 필요합니다")
-            return
-        
-        st.success("✅ Apps Script 연결됨")
-        
-        tab1, tab2, tab3 = st.tabs(["📖 히스토리 목록", "🔄 히스토리 재현", "📊 통계"])
-        
-        # === 탭 1: 히스토리 목록 ===
-        with tab1:
+    # === 상세 정보 (토글로 제어) ===
+    show_details = st.checkbox("📋 상세 히스토리 보기", value=False, key="show_history_details")
+    
+    if show_details:
+        with st.spinner("🔄 히스토리 데이터 로딩 중..."):
+            st.markdown("### 📖 히스토리 목록")
+            
             col1, col2 = st.columns([1, 4])
             
             with col1:
@@ -296,232 +334,50 @@ def render_full_history_ui():
                     st.rerun()
             
             with col2:
-                st.caption("💡 저장된 모든 히스토리")
+                st.caption("💡 저장된 모든 분석 내역")
             
-            # 데이터 로드
-            with st.spinner("📡 불러오는 중..."):
-                history_df = load_history_summary(web_app_url, api_key)
+            # 히스토리 로드
+            history_df = load_full_history(web_app_url, api_key)
             
             if not history_df.empty:
-                st.success(f"✅ 총 {len(history_df)}개의 완전 히스토리")
+                st.write(f"**총 {len(history_df)}개 히스토리**")
                 
                 # 검색
-                search_query = st.text_input(
-                    "🔍 검색", 
-                    placeholder="질문, 그래프 타입 등",
-                    key="search_full"
-                )
+                search_query = st.text_input("🔍 검색", placeholder="질문 내용으로 검색...")
                 
                 if search_query:
-                    mask = history_df.astype(str).apply(
-                        lambda row: row.str.contains(search_query, case=False, na=False).any(), 
-                        axis=1
-                    )
-                    filtered_df = history_df[mask]
-                    st.write(f"**검색 결과: {len(filtered_df)}개**")
-                else:
-                    filtered_df = history_df
+                    history_df = history_df[history_df["질문"].str.contains(search_query, case=False, na=False)]
+                    st.write(f"검색 결과: {len(history_df)}개")
                 
-                # === 항목별 카드 표시 (그래프 자동 표시) ===
-                st.markdown("---")
-                st.caption(f"💡 총 {len(filtered_df)}개 항목 | 그래프는 자동 표시, 상세정보는 펼쳐보기")
+                # 테이블 표시
+                display_cols = ["타임스탬프", "질문", "그래프타입", "시간단위"]
+                st.dataframe(
+                    history_df[display_cols],
+                    use_container_width=True,
+                    height=400
+                )
                 
-                for idx, row in filtered_df.iterrows():
-                    # 각 히스토리를 카드 형태로
-                    with st.container():
-                        # === 헤더: 질문 + 메타정보 ===
-                        col_title, col_meta = st.columns([7, 3])
-                        
-                        with col_title:
-                            st.markdown(f"### 📝 {row['질문']}")
-                        
-                        with col_meta:
-                            meta_badges = []
-                            if '그래프타입' in row and row['그래프타입'] and row['그래프타입'] != 'N/A':
-                                meta_badges.append(f"📈 {row['그래프타입']}")
-                            if '시간단위' in row and row['시간단위'] and row['시간단위'] != 'N/A':
-                                meta_badges.append(f"🕐 {row['시간단위']}")
-                            if meta_badges:
-                                st.info(" | ".join(meta_badges))
-                        
-                        st.caption(f"🕐 {row['타임스탬프']} | ID: `{row['ID']}`")
-                        
-                        # === 그래프 자동 표시 ===
-                        try:
-                            # 완전한 데이터 가져오기
-                            full_data = load_full_history_by_id(web_app_url, api_key, row['ID'])
-                            
-                            if full_data and full_data.get('그래프_설정_JSON'):
-                                try:
-                                    import plotly.graph_objects as go
-                                    fig_dict = json.loads(full_data['그래프_설정_JSON'])
-                                    fig = go.Figure(fig_dict)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"graph_{row['ID']}")
-                                except Exception as e:
-                                    st.warning(f"⚠️ 그래프 로드 실패: {e}")
-                            else:
-                                st.info("📊 그래프 없음")
-                        
-                        except Exception as e:
-                            st.error(f"❌ 데이터 로드 실패: {e}")
-                        
-                        # === 상세정보 Expander ===
-                        with st.expander(f"📋 상세정보 보기 (ID: {row['ID']})"):
-                            if full_data:
-                                # 탭으로 구분
-                                detail_tabs = st.tabs(["💡 인사이트", "📊 데이터", "💻 코드"])
-                                
-                                # 탭1: 인사이트
-                                with detail_tabs[0]:
-                                    insights = full_data.get('인사이트요약', 'N/A')
-                                    if insights and insights != 'N/A':
-                                        st.markdown(insights)
-                                    else:
-                                        st.info("인사이트 없음")
-                                
-                                # 탭2: 데이터
-                                with detail_tabs[1]:
-                                    data_json = full_data.get('데이터_JSON')
-                                    if data_json and data_json != 'N/A':
-                                        try:
-                                            data_obj = json.loads(data_json)
-                                            if isinstance(data_obj, list):
-                                                df_display = pd.DataFrame(data_obj)
-                                                st.dataframe(df_display, use_container_width=True)
-                                            else:
-                                                st.json(data_obj)
-                                        except:
-                                            st.code(data_json, language="json")
-                                    else:
-                                        st.info("데이터 없음")
-                                
-                                # 탭3: 코드
-                                with detail_tabs[2]:
-                                    # 데이터 처리 코드
-                                    data_code = full_data.get('데이터_처리_코드')
-                                    if data_code and data_code != 'N/A':
-                                        st.markdown("**📊 데이터 처리 코드:**")
-                                        st.code(data_code, language="python")
-                                    
-                                    # 그래프 생성 코드
-                                    graph_code = full_data.get('그래프_생성_코드')
-                                    if graph_code and graph_code != 'N/A':
-                                        st.markdown("**📈 그래프 생성 코드:**")
-                                        st.code(graph_code, language="python")
-                                    
-                                    if not data_code and not graph_code:
-                                        st.info("코드 없음")
-                            else:
-                                st.warning("상세 정보를 불러올 수 없습니다")
-                        
-                        # 구분선
-                        st.markdown("---")
-                
-            else:
-                st.info("📭 저장된 히스토리가 없습니다")
-        
-        # === 탭 2: 히스토리 재현 ===
-        with tab2:
-            st.markdown("### 🔄 저장된 히스토리 완전 재현")
-            
-            # 세션 상태 초기화
-            if 'selected_reproduce_id' not in st.session_state:
-                st.session_state.selected_reproduce_id = ""
-            
-            # ID 입력 (세션 상태에서 기본값 가져오기)
-            history_id = st.text_input(
-                "히스토리 ID 입력",
-                value=st.session_state.selected_reproduce_id,
-                placeholder="예: 550e8400",
-                help="재현할 히스토리의 ID를 입력하세요",
-                key="reproduce_id_input"
-            )
-            
-            if st.button("🔄 재현하기", type="primary", key="reproduce_btn"):
-                if history_id:
-                    with st.spinner("🔄 재현 중..."):
-                        full_data = load_full_history_by_id(web_app_url, api_key, history_id)
-                    
-                    if full_data:
-                        st.markdown(f"### 📋 히스토리: {full_data.get('질문', 'N/A')}")
-                        st.caption(f"🕐 {full_data.get('타임스탬프', 'N/A')}")
-                        
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("결과 타입", full_data.get('결과타입', 'N/A'))
-                        with col2:
-                            st.metric("그래프", full_data.get('그래프타입', 'N/A'))
-                        with col3:
-                            st.metric("시간 단위", full_data.get('시간단위', 'N/A'))
-                        
-                        st.divider()
-                        
-                        # 완전 재현
-                        reproduce_history(full_data)
-                    else:
-                        st.error("❌ 히스토리를 찾을 수 없습니다")
-                else:
-                    st.warning("⚠️ ID를 입력하세요")
-            
-            # 최근 히스토리 목록
-            st.divider()
-            st.markdown("#### 📋 최근 히스토리")
-            st.caption("💡 아래 버튼을 클릭하면 ID가 자동으로 입력됩니다 (위로 스크롤)")
-            
-            recent_df = load_history_summary(web_app_url, api_key)
-            if not recent_df.empty:
-                recent_5 = recent_df.head(5)
+                # 최근 5개 하이라이트
+                st.markdown("#### 🔥 최근 분석 5개")
+                recent_5 = history_df.head(5)
                 
                 for idx, row in recent_5.iterrows():
                     with st.container():
-                        col1, col2 = st.columns([5, 2])
+                        col1, col2 = st.columns([4, 1])
                         
                         with col1:
-                            st.write(f"**{row['타임스탬프']}** - {row['질문'][:50]}{'...' if len(str(row['질문'])) > 50 else ''}")
-                            st.caption(f"ID: `{row['ID']}` | {row.get('그래프타입', 'N/A')} | {row.get('시간단위', 'N/A')}")
-                        
-                        with col2:
-                            if st.button(f"📋 {row['ID'][:6]}... 복사", key=f"quick_reproduce_{row['ID']}", use_container_width=True):
-                                st.session_state.selected_reproduce_id = row['ID']
-                                st.info(f"✅ ID 복사됨: {row['ID']} (위로 스크롤하여 '재현하기' 클릭)")
-                                st.rerun()
+                            st.write(f"**{row['타임스탬프']}** - {row['질문']}")
+                            # ID 안전 처리
+                            row_id = row.get('ID', 'unknown')
+                            if pd.isna(row_id) or not row_id:
+                                row_id = 'no-id'
+                            st.caption(f"ID: `{row_id}` | {row['그래프타입']} | {row['시간단위']}")
                         
                         st.divider()
-        
-        # === 탭 3: 통계 ===
-        with tab3:
-            st.markdown("### 📊 저장 통계")
-            
-            stats_df = load_history_summary(web_app_url, api_key)
-            
-            if not stats_df.empty:
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.metric("총 히스토리", len(stats_df))
-                
-                with col2:
-                    if "그래프타입" in stats_df.columns:
-                        most_common = stats_df["그래프타입"].mode()[0] if not stats_df["그래프타입"].mode().empty else "N/A"
-                        st.metric("인기 그래프", most_common)
-                
-                with col3:
-                    if "시간단위" in stats_df.columns:
-                        most_common_unit = stats_df["시간단위"].mode()[0] if not stats_df["시간단위"].mode().empty else "N/A"
-                        st.metric("인기 시간단위", most_common_unit)
-                
-                # 분포 차트
-                if "그래프타입" in stats_df.columns:
-                    st.markdown("#### 📊 그래프 타입 분포")
-                    chart_counts = stats_df["그래프타입"].value_counts()
-                    st.bar_chart(chart_counts)
             else:
-                st.info("📭 통계 데이터가 없습니다")
-
-# ============================================
-# 🔗 add_to_history 함수 (완전 버전)
-# ============================================
-
+                st.info("📭 저장된 히스토리가 없습니다")
+    else:
+        st.info("💡 상세 히스토리를 보려면 위 체크박스를 클릭하세요")
 def add_to_full_history(
     question, result_type, figure=None, data=None, 
     insights=None, code=None, data_code=None, 
