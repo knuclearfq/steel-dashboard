@@ -341,12 +341,17 @@ def render_full_history_ui():
         with tab2:
             st.markdown("### 🔄 저장된 히스토리 완전 재현")
             
-            # ID 입력
+            # 세션 상태 초기화
+            if 'selected_reproduce_id' not in st.session_state:
+                st.session_state.selected_reproduce_id = ""
+            
+            # ID 입력 (세션 상태에서 기본값 가져오기)
             history_id = st.text_input(
                 "히스토리 ID 입력",
+                value=st.session_state.selected_reproduce_id,
                 placeholder="예: 550e8400",
                 help="재현할 히스토리의 ID를 입력하세요",
-                key="reproduce_id"
+                key="reproduce_id_input"
             )
             
             if st.button("🔄 재현하기", type="primary", key="reproduce_btn"):
@@ -392,7 +397,7 @@ def render_full_history_ui():
                     
                     with col2:
                         if st.button("🔄 재현", key=f"quick_reproduce_{row['ID']}"):
-                            st.session_state.reproduce_id = row['ID']
+                            st.session_state.selected_reproduce_id = row['ID']
                             st.rerun()
         
         # === 탭 3: 통계 ===
