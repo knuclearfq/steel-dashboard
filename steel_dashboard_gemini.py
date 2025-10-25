@@ -9,6 +9,7 @@ import re
 import traceback
 import uuid
 from datetime import datetime
+from google_sheets_full import render_full_history_ui, add_to_full_history
 
 # 경고 메시지 무시
 warnings.filterwarnings('ignore')
