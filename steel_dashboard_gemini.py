@@ -2098,7 +2098,7 @@ fig.show()
 **파이차트 요구사항:**
 - 범주형 컬럼: {', '.join(cat_cols) if cat_cols else '없음'}
 
-**💡 질문 예시:**
+ 질문 예시:
 - "md_shft 파이차트" → 개수 기반
 - "md_shft별 prod_wgt 파이차트" → 값 기반
                             """)
