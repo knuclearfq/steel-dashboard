@@ -1338,564 +1338,93 @@ print(time_data)
                         )
                 
                 # === 우선순위 1.5: 파이차트 (시계열 아님) ===
+                # === 파이차트 (간소화 버전) ===
                 elif chart_type == "pie" and wants_graph:
-                    st.markdown("### 🥧 파이차트 분석")
+                    st.markdown("### 파이차트 분석")
                     
-                    # === 범위 기반 파이차트 감지 (개선) ===
                     import re
                     
-                    # 범위 키워드 감지
-                    range_keywords = ['이하', '초과', '이상', '미만', '그룹']
-                    has_range_keyword = any(kw in user_question for kw in range_keywords)
+                    # 1. 날짜 컬럼 제외
+                    date_keywords = ['date', 'wrk_date', 'dt', 'timestamp']
+                    non_date_cat_cols = [col for col in df_work.select_dtypes(include=['object']).columns 
+                                        if not any(kw in col.lower() for kw in date_keywords)]
                     
-                    range_based = False
-                    multi_range = False
-                    threshold = None
-                    all_numbers = []
-                    group_names = []
+                    # 2. 범위 기반 파이차트 감지
+                    range_keywords = ['미만', '이하', '이상', '초과', '기준', '나눠', '구분']
+                    has_range = any(kw in user_question for kw in range_keywords)
                     
-                    if has_range_keyword:
-                        st.info("🔍 범위 키워드 감지!")
-                        
-                        # 숫자 추출 (연도 제외)
-                        all_numbers = re.findall(r'\b(\d{1,4})\b', user_question)
-                        all_numbers = [int(n) for n in all_numbers if 0 < int(n) < 10000 and int(n) != 2025 and int(n) != 2024]
-                        
-                        # 그룹 이름 추출
-                        group_names = re.findall(r'([A-Z가-힣])그룹', user_question)
-                        
-                        # 다중 그룹 감지
-                        if len(group_names) >= 2:
-                            range_based = True
-                            multi_range = True
-                            st.info(f"🎯 다중 범위 감지: {len(group_names)}개 그룹, 경계값: {all_numbers}")
-                        
-                        # 단일 범위 감지
-                        elif len(all_numbers) >= 1:
-                            range_based = True
-                            threshold = all_numbers[0]
-                            st.info(f"🎯 단일 범위 감지: 기준값 {threshold}")
-                        else:
-                            st.warning("⚠️ 범위 키워드는 있지만 기준값을 찾을 수 없습니다.")
+                    # 숫자 추출
+                    numbers = re.findall(r'\b(\d+)\b', user_question)
+                    numbers = [int(n) for n in numbers if 100 <= int(n) <= 10000]
                     
-                    # === 다중 범위 기반 파이차트 ===
-                    if range_based and multi_range:
-                        st.info(f"🎯 다중 범위 그룹핑 감지: {len(group_names)}개 그룹")
+                    # 3. 파이차트 생성
+                    fig = None
+                    pie_data = None
+                    
+                    if has_range and numbers:
+                        # === 범위 기반 ===
+                        threshold = numbers[0]
+                        st.info(f"범위 기준: {threshold}")
                         
-                        # 수치형 컬럼 찾기
-                        value_col = None
-                        if mentioned_col:
-                            value_col = mentioned_col
-                        elif numeric_cols:
-                            for col in numeric_cols:
-                                if any(kw in col.lower() for kw in ['wgt', 'unit', 'cnt', 'count', 'sum', 'total']):
-                                    value_col = col
-                                    break
-                            if not value_col:
-                                value_col = numeric_cols[0]
-                            st.info(f"ℹ️ 분석 컬럼: **{value_col}**")
+                        value_col = mentioned_col if mentioned_col else (numeric_cols[0] if numeric_cols else None)
                         
                         if value_col:
-                            try:
-                                # 숫자 정렬 (경계값)
-                                boundaries = sorted(set(all_numbers))
-                                st.info(f"📊 경계값: {boundaries}")
-                                
-                                # 범위 기반 그룹 생성 함수
-                                def assign_group(value):
-                                    if len(boundaries) == 2:
-                                        # 2개 경계: 0-400, 400+
-                                        if value <= boundaries[0]:
-                                            return f"{group_names[0]}그룹"
-                                        else:
-                                            return f"{group_names[1]}그룹"
-                                    elif len(boundaries) == 3:
-                                        # 3개 경계: 0-400, 400-500, 500+
-                                        if value <= boundaries[1]:
-                                            return f"{group_names[0]}그룹"
-                                        elif value <= boundaries[2]:
-                                            return f"{group_names[1]}그룹"
-                                        else:
-                                            return f"{group_names[2]}그룹" if len(group_names) > 2 else f"{group_names[1]}그룹"
-                                    else:
-                                        # 일반적인 경우
-                                        for i, boundary in enumerate(boundaries[:-1]):
-                                            if value <= boundary:
-                                                return f"{group_names[min(i, len(group_names)-1)]}그룹"
-                                        return f"{group_names[-1]}그룹"
-                                
-                                # 범위 그룹 생성
-                                df_copy = df_facility.copy()
-                                df_copy['range_group'] = df_copy[value_col].apply(assign_group)
-                                
-                                # 그룹별 개수 계산
-                                range_counts = df_copy['range_group'].value_counts().reset_index()
-                                range_counts.columns = ['범위', '개수']
-                                
-                                # 파이차트 생성
-                                fig = px.pie(
-                                    range_counts,
-                                    names='범위',
-                                    values='개수',
-                                    title=f'{value_col} 값 기준 범위별 분포'
-                                )
-                                
-                                fig.update_traces(textposition='inside', textinfo='percent+label+value')
-                                fig.update_layout(height=500)
-                                
-                                st.plotly_chart(fig, use_container_width=True)
-                                
-                                # 상세 통계
-                                with st.expander("📊 상세 통계"):
-                                    col1, col2 = st.columns(2)
-                                    
-                                    with col1:
-                                        st.markdown("**개수 및 비율:**")
-                                        range_counts['비율(%)'] = (range_counts['개수'] / range_counts['개수'].sum() * 100).round(2)
-                                        st.dataframe(range_counts, use_container_width=True)
-                                    
-                                    with col2:
-                                        st.markdown("**실제 값 통계:**")
-                                        stats_list = []
-                                        for group in range_counts['범위']:
-                                            group_data = df_copy[df_copy['range_group'] == group][value_col]
-                                            stats_list.append({
-                                                '범위': group,
-                                                '평균': group_data.mean() if len(group_data) > 0 else 0,
-                                                '최소': group_data.min() if len(group_data) > 0 else 0,
-                                                '최대': group_data.max() if len(group_data) > 0 else 0
-                                            })
-                                        stats_df = pd.DataFrame(stats_list)
-                                        st.dataframe(stats_df, use_container_width=True)
-                                
-                                # 인사이트
-                                total = range_counts['개수'].sum()
-                                max_group = range_counts.loc[range_counts['개수'].idxmax(), '범위']
-                                max_count = range_counts['개수'].max()
-                                
-                                insights_text = f"""
-**🎯 다중 범위 분포 인사이트:**
-- 전체 데이터: {total:,}개
-- 총 {len(range_counts)}개 그룹
-- 가장 많은 그룹: **{max_group}** ({max_count:,}개, {max_count/total*100:.1f}%)
-- 경계값: {boundaries}
-                                """
-                                
-                                st.success(insights_text)
-                                
-                                # 코드 생성
-                                range_data_code = f"""# 다중 범위 기반 데이터 처리
-import pandas as pd
-
-# 1. 원본 데이터 로드
-df = pd.read_csv('your_file.csv')
-print(f"원본 데이터: {{len(df):,}}행")
-
-# 2. 범위 그룹 할당 함수
-boundaries = {boundaries}
-group_names = {group_names}
-
-def assign_group(value):
-    # 사용자 정의 로직
-    if value <= boundaries[1]:
-        return f"{{group_names[0]}}그룹"
-    elif value <= boundaries[2]:
-        return f"{{group_names[1]}}그룹"
-    else:
-        return f"{{group_names[2]}}그룹"
-
-# 3. 범위 그룹 생성
-df['range_group'] = df['{value_col}'].apply(assign_group)
-
-# 4. 그룹별 개수 계산
-range_counts = df['range_group'].value_counts().reset_index()
-range_counts.columns = ['범위', '개수']
-
-print(range_counts)
-"""
-                                
-                                range_code = f"""# 다중 범위 파이차트 생성
-import plotly.express as px
-
-fig = px.pie(
-    range_counts,
-    names='범위',
-    values='개수',
-    title='{value_col} 값 기준 범위별 분포'
-)
-
-fig.update_traces(textposition='inside', textinfo='percent+label+value')
-fig.update_layout(height=500)
-
-fig.show()
-"""
-                                
-                                # 히스토리 저장
-                                add_to_full_history(
-                                    question=user_question,
-                                    result_type="다중범위_파이차트",
-                                    figure=fig,
-                                    data=range_counts,
-                                    insights=insights_text,
-                                    code=range_code,
-                                    data_code=range_data_code,
-                                    chart_type="파이차트",
-                                    time_unit="N/A"
-                                )
-                                
-                            except Exception as e:
-                                st.error(f"❌ 다중 범위 파이차트 생성 실패: {e}")
-                                log_error("MultiRangePieChartError", "다중 범위 파이차트 오류", str(e))
-                        
+                            df_copy = df_work.copy()
+                            df_copy['범위'] = df_copy[value_col].apply(
+                                lambda x: f'{threshold} 미만' if x < threshold else f'{threshold} 이상'
+                            )
+                            
+                            pie_data = df_copy['범위'].value_counts().reset_index()
+                            pie_data.columns = ['범위', '개수']
+                            
+                            fig = px.pie(pie_data, names='범위', values='개수', 
+                                        title=f'{value_col} 범위별 분포')
                         else:
-                            st.error("❌ 분석할 수치 컬럼을 찾을 수 없습니다.")
-                            st.info(f"사용 가능한 수치 컬럼: {', '.join(numeric_cols)}")
+                            st.error("수치형 컬럼을 찾을 수 없습니다.")
                     
-                    # === 단일 범위 기반 파이차트 (기존) ===
-                    elif range_based and threshold is not None:
-                        st.info(f"🎯 범위 기반 그룹핑 감지: **{threshold}** 기준")
+                    elif non_date_cat_cols:
+                        # === 범주형 기반 ===
                         
-                        # 수치형 컬럼 찾기
-                        value_col = None
-                        if mentioned_col:
-                            value_col = mentioned_col
-                        elif numeric_cols:
-                            for col in numeric_cols:
-                                if any(kw in col.lower() for kw in ['wgt', 'unit', 'cnt', 'count', 'sum', 'total']):
-                                    value_col = col
-                                    break
-                            if not value_col:
-                                value_col = numeric_cols[0]
-                            st.info(f"ℹ️ 분석 컬럼: **{value_col}**")
-                        
-                        if value_col:
-                            try:
-                                # 범위 기반 그룹 생성
-                                df_copy = df_facility.copy()
-                                df_copy['range_group'] = df_copy[value_col].apply(
-                                    lambda x: f'{threshold} 이하' if x <= threshold else f'{threshold} 초과'
-                                )
-                                
-                                # 그룹별 개수 계산
-                                range_counts = df_copy['range_group'].value_counts().reset_index()
-                                range_counts.columns = ['범위', '개수']
-                                
-                                # 파이차트 생성
-                                fig = px.pie(
-                                    range_counts,
-                                    names='범위',
-                                    values='개수',
-                                    title=f'{value_col} 값 기준 범위별 분포 (기준: {threshold})'
-                                )
-                                
-                                fig.update_traces(textposition='inside', textinfo='percent+label+value')
-                                fig.update_layout(height=500)
-                                
-                                st.plotly_chart(fig, use_container_width=True)
-                                
-                                # 상세 통계
-                                with st.expander("📊 상세 통계"):
-                                    col1, col2 = st.columns(2)
-                                    
-                                    with col1:
-                                        st.markdown("**개수 및 비율:**")
-                                        range_counts['비율(%)'] = (range_counts['개수'] / range_counts['개수'].sum() * 100).round(2)
-                                        st.dataframe(range_counts, use_container_width=True)
-                                    
-                                    with col2:
-                                        st.markdown("**실제 값 통계:**")
-                                        group1 = df_copy[df_copy[value_col] <= threshold][value_col]
-                                        group2 = df_copy[df_copy[value_col] > threshold][value_col]
-                                        
-                                        stats_df = pd.DataFrame({
-                                            '범위': [f'{threshold} 이하', f'{threshold} 초과'],
-                                            '평균': [group1.mean() if len(group1) > 0 else 0, 
-                                                    group2.mean() if len(group2) > 0 else 0],
-                                            '최소': [group1.min() if len(group1) > 0 else 0, 
-                                                    group2.min() if len(group2) > 0 else 0],
-                                            '최대': [group1.max() if len(group1) > 0 else 0, 
-                                                    group2.max() if len(group2) > 0 else 0]
-                                        })
-                                        st.dataframe(stats_df, use_container_width=True)
-                                
-                                # 인사이트
-                                total = range_counts['개수'].sum()
-                                group1_cnt = range_counts[range_counts['범위'] == f'{threshold} 이하']['개수'].values[0] if f'{threshold} 이하' in range_counts['범위'].values else 0
-                                group2_cnt = range_counts[range_counts['범위'] == f'{threshold} 초과']['개수'].values[0] if f'{threshold} 초과' in range_counts['범위'].values else 0
-                                
-                                insights_text = f"""
-**🎯 범위별 분포 인사이트:**
-- 전체 데이터: {total:,}개
-- {threshold} 이하: {group1_cnt:,}개 ({group1_cnt/total*100:.1f}%)
-- {threshold} 초과: {group2_cnt:,}개 ({group2_cnt/total*100:.1f}%)
-- 기준값: {threshold}
-                                """
-                                
-                                if group1_cnt > group2_cnt:
-                                    insights_text += f"\n→ **{threshold} 이하** 구간이 더 많습니다 ({group1_cnt/group2_cnt:.1f}배)"
-                                elif group2_cnt > group1_cnt:
-                                    insights_text += f"\n→ **{threshold} 초과** 구간이 더 많습니다 ({group2_cnt/group1_cnt:.1f}배)"
-                                else:
-                                    insights_text += f"\n→ 두 구간이 비슷합니다"
-                                
-                                st.success(insights_text)
-                                
-                                # 코드 생성
-                                range_data_code = f"""# 범위 기반 데이터 처리
-import pandas as pd
-
-# 1. 원본 데이터 로드
-df = pd.read_csv('your_file.csv')
-print(f"원본 데이터: {{len(df):,}}행")
-
-# 2. 범위 기반 그룹 생성
-df['range_group'] = df['{value_col}'].apply(
-    lambda x: '{threshold} 이하' if x <= {threshold} else '{threshold} 초과'
-)
-
-# 3. 그룹별 개수 계산
-range_counts = df['range_group'].value_counts().reset_index()
-range_counts.columns = ['범위', '개수']
-
-print(range_counts)
-"""
-                                
-                                range_code = f"""# 범위 기반 파이차트 생성
-import plotly.express as px
-
-fig = px.pie(
-    range_counts,
-    names='범위',
-    values='개수',
-    title='{value_col} 값 기준 범위별 분포 (기준: {threshold})'
-)
-
-fig.update_traces(textposition='inside', textinfo='percent+label+value')
-fig.update_layout(height=500)
-
-fig.show()
-"""
-                                
-                                # 히스토리 저장
-                                add_to_full_history(
-                                    question=user_question,
-                                    result_type="범위별_파이차트",
-                                    figure=fig,
-                                    data=range_counts,
-                                    insights=insights_text,
-                                    code=range_code,
-                                    data_code=range_data_code,
-                                    chart_type="파이차트",
-                                    time_unit="N/A"
-                                )
-                                
-                            except Exception as e:
-                                st.error(f"❌ 범위 기반 파이차트 생성 실패: {e}")
-                                log_error("RangePieChartError", "범위 파이차트 오류", str(e))
-                        
-                        else:
-                            st.error("❌ 분석할 수치 컬럼을 찾을 수 없습니다.")
-                            st.info(f"사용 가능한 수치 컬럼: {', '.join(numeric_cols)}")
-                    
-                    # === 일반 파이차트 (기존 로직) ===
-                    else:
                         # 범주형 컬럼 찾기
                         cat_col = None
-                        cat_cols = df_facility.select_dtypes(include=['object']).columns.tolist()
-                        
-                        for col in cat_cols:
-                            if col in user_question_lower:
+                        for col in non_date_cat_cols:
+                            if col in user_question:
                                 cat_col = col
                                 break
                         
-                        # 컬럼 못 찾으면 첫 번째 범주형 컬럼 사용
-                        if not cat_col and cat_cols:
-                            cat_col = cat_cols[0]
-                            st.info(f"ℹ️ 범주형 컬럼 자동 선택: **{cat_col}**")
+                        if not cat_col:
+                            cat_col = non_date_cat_cols[0]
                         
-                        # === 핵심: 수치형 컬럼이 질문에 명시되었는지 확인 ===
-                        value_col = None
-                        use_count_based = True  # 기본은 개수 기반
+                        st.info(f"범주형 컬럼: {cat_col}")
                         
-                        # 질문에 수치형 컬럼이 명시되어 있으면 값 기반
-                        if mentioned_col:
-                            value_col = mentioned_col
-                            use_count_based = False
-                            st.info(f"ℹ️ 값 기반 파이차트: **{value_col}** 합계 사용")
+                        # 수치형 컬럼 확인
+                        value_col = mentioned_col
+                        
+                        if value_col:
+                            # 값 기반
+                            pie_data = df_work.groupby(cat_col)[value_col].sum().reset_index()
+                            pie_data.columns = [cat_col, '합계']
+                            
+                            fig = px.pie(pie_data, names=cat_col, values='합계',
+                                        title=f'{cat_col}별 {value_col} 합계')
                         else:
-                            st.info(f"ℹ️ 개수 기반 파이차트: **{cat_col}** 범주별 개수")
+                            # 개수 기반
+                            pie_data = df_work[cat_col].value_counts().reset_index()
+                            pie_data.columns = [cat_col, '개수']
+                            
+                            fig = px.pie(pie_data, names=cat_col, values='개수',
+                                        title=f'{cat_col}별 개수')
+                    
+                    else:
+                        st.error("적절한 범주형 컬럼이 없습니다.")
+                    
+                    # 차트 표시
+                    if fig:
+                        fig.update_traces(textposition='inside', textinfo='percent+label+value')
+                        st.plotly_chart(fig, use_container_width=True)
                         
-                        if cat_col:
-                            try:
-                                # === 개수 기반 파이차트 ===
-                                if use_count_based:
-                                    # 범주별 개수 계산
-                                    pie_data = df_facility[cat_col].value_counts().reset_index()
-                                    pie_data.columns = [cat_col, '개수']
-                                    
-                                    # 파이차트 생성
-                                    fig = px.pie(
-                                        pie_data,
-                                        names=cat_col,
-                                        values='개수',
-                                        title=f'{cat_col}별 개수 비율'
-                                    )
-                                    
-                                    fig.update_traces(textposition='inside', textinfo='percent+label+value')
-                                    fig.update_layout(height=500)
-                                    
-                                    st.plotly_chart(fig, use_container_width=True)
-                                    
-                                    # 데이터 테이블
-                                    with st.expander("📊 데이터 테이블"):
-                                        pie_data['비율(%)'] = (pie_data['개수'] / pie_data['개수'].sum() * 100).round(2)
-                                        st.dataframe(pie_data, use_container_width=True)
-                                    
-                                    # 인사이트
-                                    max_cat = pie_data.loc[pie_data['개수'].idxmax(), cat_col]
-                                    max_val = pie_data['개수'].max()
-                                    max_pct = (max_val / pie_data['개수'].sum() * 100)
-                                    total_count = pie_data['개수'].sum()
-                                    
-                                    insights_text = f"""
-**🎯 파이차트 인사이트 (개수 기반):**
-- 가장 많은 범주: **{max_cat}** ({max_val:,}개, {max_pct:.1f}%)
-- 총 {len(pie_data)}개 범주
-- 전체 개수: {total_count:,}개
-                                    """
-                                    
-                                    st.success(insights_text)
-                                    
-                                    # 코드 생성
-                                    pie_data_code = f"""# 개수 기반 데이터 처리
-import pandas as pd
-
-# 1. 원본 데이터 로드
-df = pd.read_csv('your_file.csv')
-print(f"원본 데이터: {{len(df):,}}행")
-
-# 2. 범주별 개수 계산
-pie_data = df['{cat_col}'].value_counts().reset_index()
-pie_data.columns = ['{cat_col}', '개수']
-
-print(f"처리된 데이터:")
-print(pie_data)
-"""
-                                    
-                                    pie_code = f"""# 파이차트 생성 (개수 기반)
-import plotly.express as px
-
-fig = px.pie(
-    pie_data,
-    names='{cat_col}',
-    values='개수',
-    title='{cat_col}별 개수 비율'
-)
-
-fig.update_traces(textposition='inside', textinfo='percent+label+value')
-fig.update_layout(height=500)
-
-fig.show()
-"""
-                                
-                                # === 값 기반 파이차트 ===
-                                else:
-                                    # 범주별 합계 계산
-                                    pie_data = df_facility.groupby(cat_col)[value_col].sum().reset_index()
-                                    pie_data.columns = [cat_col, f'{value_col}_합계']
-                                    
-                                    # 파이차트 생성
-                                    fig = px.pie(
-                                        pie_data,
-                                        names=cat_col,
-                                        values=f'{value_col}_합계',
-                                        title=f'{cat_col}별 {value_col} 비율'
-                                    )
-                                    
-                                    fig.update_traces(textposition='inside', textinfo='percent+label')
-                                    fig.update_layout(height=500)
-                                    
-                                    st.plotly_chart(fig, use_container_width=True)
-                                    
-                                    # 데이터 테이블
-                                    with st.expander("📊 데이터 테이블"):
-                                        pie_data['비율(%)'] = (pie_data[f'{value_col}_합계'] / pie_data[f'{value_col}_합계'].sum() * 100).round(2)
-                                        st.dataframe(pie_data, use_container_width=True)
-                                    
-                                    # 인사이트
-                                    max_cat = pie_data.loc[pie_data[f'{value_col}_합계'].idxmax(), cat_col]
-                                    max_val = pie_data[f'{value_col}_합계'].max()
-                                    max_pct = (max_val / pie_data[f'{value_col}_합계'].sum() * 100)
-                                    
-                                    insights_text = f"""
-**🎯 파이차트 인사이트 (값 기반):**
-- 가장 큰 비중: **{max_cat}** ({max_val:,.2f}, {max_pct:.1f}%)
-- 총 {len(pie_data)}개 범주
-- 전체 합계: {pie_data[f'{value_col}_합계'].sum():,.2f}
-                                    """
-                                    
-                                    st.success(insights_text)
-                                    
-                                    # 코드 생성
-                                    pie_data_code = f"""# 값 기반 데이터 처리
-import pandas as pd
-
-# 1. 원본 데이터 로드
-df = pd.read_csv('your_file.csv')
-print(f"원본 데이터: {{len(df):,}}행")
-
-# 2. 범주별 합계 계산
-pie_data = df.groupby('{cat_col}')['{value_col}'].sum().reset_index()
-pie_data.columns = ['{cat_col}', '{value_col}_합계']
-
-print(f"처리된 데이터:")
-print(pie_data)
-"""
-                                    
-                                    pie_code = f"""# 파이차트 생성 (값 기반)
-import plotly.express as px
-
-fig = px.pie(
-    pie_data,
-    names='{cat_col}',
-    values='{value_col}_합계',
-    title='{cat_col}별 {value_col} 비율'
-)
-
-fig.update_traces(textposition='inside', textinfo='percent+label')
-fig.update_layout(height=500)
-
-fig.show()
-"""
-                                
-                                # 히스토리 저장
-                                add_to_full_history(
-                                    question=user_question,
-                                    result_type="파이차트_분석",
-                                    figure=fig,
-                                    data=pie_data,
-                                    insights=insights_text,
-                                    code=pie_code,
-                                    data_code=pie_data_code,
-                                    chart_type="파이차트",
-                                    time_unit="N/A"
-                                )
-                                
-                            except Exception as e:
-                                st.error(f"❌ 파이차트 생성 실패: {e}")
-                                log_error("PieChartError", "파이차트 생성 오류", str(e))
-                        
-                        else:
-                            st.error("❌ 파이차트에 필요한 범주형 컬럼을 찾을 수 없습니다.")
-                            st.info(f"""
-**파이차트 요구사항:**
-- 범주형 컬럼: {', '.join(cat_cols) if cat_cols else '없음'}
-
-**💡 질문 예시:**
-- "md_shft 파이차트" → 개수 기반
-- "md_shft별 prod_wgt 파이차트" → 값 기반
-                            """)
-                            log_error("PieChartError", "필요 컬럼 없음", f"범주: {cat_cols}")
+                        with st.expander("데이터 상세"):
+                            st.dataframe(pie_data)
                 
                 # === 우선순위 2: 간단한 통계 ===
                 elif "행" in user_question or "row" in user_question_lower:
