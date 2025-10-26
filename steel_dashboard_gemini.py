@@ -1821,8 +1821,8 @@ fig.show()
                                 insights_text = f"""
 범위별 분포 인사이트:
 - 전체 데이터: {total:,}개
-- {threshold} 이하: {group1_cnt:,}개 ({group1_cnt/total*100:.1f}%)
-- {threshold} 초과: {group2_cnt:,}개 ({group2_cnt/total*100:.1f}%)
+- {threshold} 이하: {group1_cnt:,}개 ({(group1_cnt/total*100):.1f}%)
+- {threshold} 초과: {group2_cnt:,}개 ({(group2_cnt/total*100):.1f}%)
 - 기준값: {threshold}
                                 """
                                 
