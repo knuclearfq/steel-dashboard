@@ -1362,9 +1362,14 @@ print(time_data)
                     range_keywords = ['미만', '이만', '이하', '이상', '초과', '기준', '나눠', '구분', '분리', '나누']
                     has_range = any(kw in user_question for kw in range_keywords)
                     
+                    # 디버깅
+                    st.info(f"[디버깅] 범위 감지: {has_range}, 감지된 키워드: {[kw for kw in range_keywords if kw in user_question]}")
+                    
                     # 숫자 추출
                     numbers = re.findall(r'\b(\d+)\b', user_question)
                     numbers = [int(n) for n in numbers if 100 <= int(n) <= 10000]
+                    
+                    st.info(f"[디버깅] 추출된 숫자: {numbers}")
                     
                     # 3. 파이차트 생성
                     fig = None
@@ -1372,34 +1377,27 @@ print(time_data)
                     
                     if has_range and numbers:
                         # === 범위 기반 ===
+                        st.info(f"[디버깅] 범위 기반 파이차트 감지됨")
                         threshold = numbers[0]
                         st.info(f"범위 기준: {threshold}")
                         
-                        # value_col 찾기 - 질문에서 컬럼명 검색 (모든 컬럼 대상)
+                        # value_col 찾기 - 질문에서 컬럼명 검색
                         value_col = None
                         
-                        # 1. 질문에서 컬럼명 직접 검색 (전체 컬럼)
+                        # 1. 질문에서 컬럼명 직접 검색 (숫자 변환 가능한 것만)
                         for col in df_work.columns:
                             if col in user_question:
                                 # 숫자로 변환 가능한지 확인
-                                try:
-                                    pd.to_numeric(df_work[col], errors='coerce')
+                                test_series = pd.to_numeric(df_work[col], errors='coerce')
+                                if test_series.notna().sum() > 0:  # 유효한 숫자가 있으면
                                     value_col = col
                                     st.success(f"감지된 컬럼: {col}")
                                     break
-                                except:
-                                    continue
                         
-                        # 2. 숫자형 컬럼 중 질문에 있는 것
-                        if not value_col:
-                            for col in numeric_cols:
-                                if col in user_question:
-                                    value_col = col
-                                    break
-                        
-                        # 3. 첫 번째 숫자형 컬럼
+                        # 2. 못 찾았으면 첫 번째 숫자형 컬럼
                         if not value_col and numeric_cols:
                             value_col = numeric_cols[0]
+                            st.info(f"기본 컬럼 사용: {value_col}")
                         
                         if value_col:
                             df_copy = df_work.copy()
