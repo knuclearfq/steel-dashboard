@@ -1818,13 +1818,14 @@ fig.show()
                                 group1_cnt = range_counts[range_counts['범위'] == f'{threshold} 이하']['개수'].values[0] if f'{threshold} 이하' in range_counts['범위'].values else 0
                                 group2_cnt = range_counts[range_counts['범위'] == f'{threshold} 초과']['개수'].values[0] if f'{threshold} 초과' in range_counts['범위'].values else 0
                                 
-                                insights_text = f"""
-범위별 분포 인사이트:
-- 전체 데이터: {total:,}개
-- {threshold} 이하: {group1_cnt:,}개 ({(group1_cnt/total*100):.1f}%)
-- {threshold} 초과: {group2_cnt:,}개 ({(group2_cnt/total*100):.1f}%)
-- 기준값: {threshold}
-                                """
+                                pct1 = round(group1_cnt/total*100, 1)
+                                pct2 = round(group2_cnt/total*100, 1)
+                                
+                                insights_text = f"""범위별 분포 인사이트:
+- 전체: {total}개
+- {threshold} 이하: {group1_cnt}개 ({pct1}%)
+- {threshold} 초과: {group2_cnt}개 ({pct2}%)
+"""
                                 
                                 if group1_cnt > group2_cnt:
                                     insights_text += f"\n→ **{threshold} 이하** 구간이 더 많습니다 ({group1_cnt/group2_cnt:.1f}배)"
