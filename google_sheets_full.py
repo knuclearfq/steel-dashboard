@@ -26,10 +26,6 @@ def get_apps_script_config():
     web_app_url = config.get("web_app_url")
     api_key = config.get("api_key")
     
-    # 디버깅: API 키 확인 (첫 5글자만)
-    if api_key:
-        st.sidebar.caption(f"🔑 API Key: {api_key[:5]}...")
-    
     return web_app_url, api_key
 
 # ============================================
@@ -393,56 +389,7 @@ def render_full_history_ui():
                     yaxis_title="사용 횟수",
                     showlegend=False
                 )
-                st.plotly_chart(fig, use_container_width=True)
-            
-            st.divider()
-            
-            # === 1+2단계: 히스토리 목록 + 그래프 자동 표시 ===
-            st.markdown("### 📋 분석 히스토리")
-            
-            # 2단계를 위한 모든 ID 수집
-            all_ids = stats_df['ID'].tolist() if 'ID' in stats_df.columns else []
-            
-            # 2단계: 모든 그래프 한 번에 조회
-            with st.spinner("📊 그래프 로딩 중..."):
-                graph_map = {}
-                for history_id in all_ids:
-                    if history_id:
-                        graph_data = load_graph_by_id(web_app_url, api_key, history_id)
-                        if graph_data:
-                            graph_map[history_id] = graph_data.get('그래프_설정_JSON', '')
-            
-            # 1+2단계 결과 표시: 히스토리 + 그래프
-            for idx, row in stats_df.iterrows():
-                history_id = row.get('ID', '')
-                timestamp = row.get('타임스탬프', '')
-                question = row.get('질문', '')
-                time_unit = row.get('시간단위', '')
-                chart_type = row.get('그래프타입', '')
-                
-                if not history_id:
-                    continue
-                
-                with st.expander(f"📊 {question}", expanded=False):
-                    # 기본 정보
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.caption(f"🕐 {timestamp}")
-                    with col2:
-                        st.caption(f"📈 {chart_type}")
-                    with col3:
-                        st.caption(f"⏱️ {time_unit}")
-                    
-                    # 그래프 자동 표시
-                    if history_id in graph_map and graph_map[history_id]:
-                        try:
-                            graph_json = graph_map[history_id]
-                            fig = go.Figure(json.loads(graph_json))
-                            st.plotly_chart(fig, use_container_width=True)
-                        except Exception as e:
-                            st.error(f"그래프 로딩 실패: {e}")
-                    else:
-                        st.info("그래프 데이터 없음")
+                st.plotly_chart(fig, use_container_width=True, key="stats_chart")
         else:
             st.info("📭 아직 저장된 분석이 없습니다")
     
@@ -452,7 +399,7 @@ def render_full_history_ui():
     st.divider()
     
     # === 히스토리 목록 (항상 표시) ===
-    st.markdown("### 📋 분석 히스토리")
+    st.markdown("## 📋 분석 히스토리")
     
     try:
         # 1단계: 기본 정보 로딩
@@ -473,7 +420,7 @@ def render_full_history_ui():
                     if graph_data:
                         graph_map[history_id] = graph_data.get('그래프_설정_JSON', '')
         
-        # 각 히스토리 항목 표시
+        # 각 히스토리 항목 표시 (토글 없이)
         for idx, row in stats_df.iterrows():
             history_id = row.get('ID', '')
             timestamp = row.get('타임스탬프', '')
@@ -484,88 +431,91 @@ def render_full_history_ui():
             if not history_id:
                 continue
             
-            # 히스토리 항목 (expander)
-            with st.expander(f"📊 {question}", expanded=False):
-                # 기본 정보
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.caption(f"🕐 {timestamp}")
-                with col2:
-                    st.caption(f"📈 {chart_type}")
-                with col3:
-                    st.caption(f"⏱️ {time_unit}")
-                
-                # 그래프 (항상 표시)
-                if history_id in graph_map and graph_map[history_id]:
-                    try:
-                        graph_json = graph_map[history_id]
-                        fig = go.Figure(json.loads(graph_json))
-                        st.plotly_chart(fig, use_container_width=True)
-                    except Exception as e:
-                        st.error(f"그래프 로딩 실패: {e}")
-                else:
-                    st.info("그래프 데이터 없음")
-                
+            # 구분선
+            if idx > 0:
                 st.divider()
-                
-                # 개별 상세정보 체크박스
-                show_detail = st.checkbox(
-                    "🔍 상세정보 보기 (데이터, 코드, 인사이트)",
-                    key=f"detail_{history_id}",
-                    value=False
-                )
-                
-                # 3단계: 체크박스 클릭 시 해당 항목만 Full 로딩
-                if show_detail:
-                    with st.spinner(f"상세정보 로딩 중..."):
-                        full_data = load_history_by_id(web_app_url, api_key, history_id)
+            
+            # 히스토리 제목
+            st.markdown(f"### 📊 {question}")
+            
+            # 기본 정보
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.caption(f"🕐 {timestamp}")
+            with col2:
+                st.caption(f"📈 {chart_type}")
+            with col3:
+                st.caption(f"⏱️ {time_unit}")
+            
+            # 그래프 (항상 표시) - 고유 key 사용
+            if history_id in graph_map and graph_map[history_id]:
+                try:
+                    graph_json = graph_map[history_id]
+                    fig = go.Figure(json.loads(graph_json))
+                    st.plotly_chart(fig, use_container_width=True, key=f"graph_{history_id}")
+                except Exception as e:
+                    st.error(f"그래프 로딩 실패: {e}")
+            else:
+                st.info("그래프 데이터 없음")
+            
+            # 개별 상세정보 체크박스
+            show_detail = st.checkbox(
+                "🔍 상세정보 보기 (데이터, 코드, 인사이트)",
+                key=f"detail_{history_id}",
+                value=False
+            )
+            
+            # 3단계: 체크박스 클릭 시 해당 항목만 Full 로딩
+            if show_detail:
+                with st.spinner(f"상세정보 로딩 중..."):
+                    full_data = load_history_by_id(web_app_url, api_key, history_id)
+                    
+                    if full_data:
+                        tabs = st.tabs(["📋 데이터", "💻 코드", "💡 인사이트"])
                         
-                        if full_data:
-                            tabs = st.tabs(["📋 데이터", "💻 코드", "💡 인사이트"])
+                        # 데이터 탭
+                        with tabs[0]:
+                            data_json = full_data.get('데이터_JSON', '')
+                            if data_json:
+                                try:
+                                    data = json.loads(data_json)
+                                    df = pd.DataFrame(data)
+                                    st.dataframe(df, use_container_width=True, key=f"data_{history_id}")
+                                    st.caption(f"총 {len(df):,}행")
+                                except Exception as e:
+                                    st.error(f"데이터 복원 실패: {e}")
+                            else:
+                                st.info("데이터 없음")
+                        
+                        # 코드 탭
+                        with tabs[1]:
+                            col1, col2 = st.columns(2)
                             
-                            # 데이터 탭
-                            with tabs[0]:
-                                data_json = full_data.get('데이터_JSON', '')
-                                if data_json:
-                                    try:
-                                        data = json.loads(data_json)
-                                        df = pd.DataFrame(data)
-                                        st.dataframe(df, use_container_width=True)
-                                        st.caption(f"총 {len(df):,}행")
-                                    except Exception as e:
-                                        st.error(f"데이터 복원 실패: {e}")
+                            with col1:
+                                st.markdown("**🔧 데이터 처리 코드**")
+                                data_code = full_data.get('데이터_처리_코드', '')
+                                if data_code:
+                                    st.code(data_code, language="python")
                                 else:
-                                    st.info("데이터 없음")
+                                    st.info("코드 없음")
                             
-                            # 코드 탭
-                            with tabs[1]:
-                                col1, col2 = st.columns(2)
-                                
-                                with col1:
-                                    st.markdown("**🔧 데이터 처리 코드**")
-                                    data_code = full_data.get('데이터_처리_코드', '')
-                                    if data_code:
-                                        st.code(data_code, language="python")
-                                    else:
-                                        st.info("코드 없음")
-                                
-                                with col2:
-                                    st.markdown("**📊 그래프 생성 코드**")
-                                    graph_code = full_data.get('그래프_생성_코드', '')
-                                    if graph_code:
-                                        st.code(graph_code, language="python")
-                                    else:
-                                        st.info("코드 없음")
-                            
-                            # 인사이트 탭
-                            with tabs[2]:
-                                insights = full_data.get('인사이트요약', '')
-                                if insights:
-                                    st.info(insights)
+                            with col2:
+                                st.markdown("**📊 그래프 생성 코드**")
+                                graph_code = full_data.get('그래프_생성_코드', '')
+                                if graph_code:
+                                    st.code(graph_code, language="python")
                                 else:
-                                    st.info("인사이트 없음")
-                        else:
-                            st.error("상세정보를 불러올 수 없습니다")
+                                    st.info("코드 없음")
+                        
+                        # 인사이트 탭
+                        with tabs[2]:
+                            insights = full_data.get('인사이트요약', '')
+                            if insights:
+                                st.info(insights)
+                            else:
+                                st.info("인사이트 없음")
+                    else:
+                        st.error("상세정보를 불러올 수 없습니다")
     
     except Exception as e:
         st.error(f"❌ 히스토리 로딩 실패: {e}")
