@@ -1639,7 +1639,7 @@ print(time_data)
 
 """
                                 for _, row in range_counts.iterrows():
-                                    insights_text += f"- **{row['범위']}**: {row['개수']:,}개 ({row['비율(%)']:.1f}%)\n"
+                                    insights_text += f"- {row['범위']}: {row['개수']:,}개 ({row['비율(%)']:.1f}%)\n"
                                 
                                 max_group = range_counts.iloc[0]
                                 insights_text += f"\n**가장 많은 그룹**: {max_group['범위']} ({max_group['비율(%)']:.1f}%)"
@@ -1828,11 +1828,13 @@ fig.show()
 """
                                 
                                 if group1_cnt > group2_cnt:
-                                    insights_text += f"\n→ **{threshold} 이하** 구간이 더 많습니다 ({group1_cnt/group2_cnt:.1f}배)"
+                                    ratio1 = round(group1_cnt/group2_cnt, 1)
+                                    insights_text += f"\n{threshold} 이하 구간이 더 많습니다 ({ratio1}배)"
                                 elif group2_cnt > group1_cnt:
-                                    insights_text += f"\n→ **{threshold} 초과** 구간이 더 많습니다 ({group2_cnt/group1_cnt:.1f}배)"
+                                    ratio2 = round(group2_cnt/group1_cnt, 1)
+                                    insights_text += f"\n{threshold} 초과 구간이 더 많습니다 ({ratio2}배)"
                                 else:
-                                    insights_text += f"\n→ 두 구간이 비슷합니다"
+                                    insights_text += f"\n두 구간이 비슷합니다"
                                 
                                 st.success(insights_text)
                                 
@@ -1955,7 +1957,7 @@ fig.show()
                                     
                                     insights_text = f"""
 파이차트 인사이트 (개수 기반):
-- 가장 많은 범주: **{max_cat}** ({max_val:,}개, {max_pct:.1f}%)
+- 가장 많은 범주: {max_cat} ({max_val:,}개, {max_pct:.1f}%)
 - 총 {len(pie_data)}개 범주
 - 전체 개수: {total_count:,}개
                                     """
@@ -2024,8 +2026,8 @@ fig.show()
                                     max_pct = (max_val / pie_data[f'{value_col}_합계'].sum() * 100)
                                     
                                     insights_text = f"""
-**🎯 파이차트 인사이트 (값 기반):**
-- 가장 큰 비중: **{max_cat}** ({max_val:,.2f}, {max_pct:.1f}%)
+파이차트 인사이트 (값 기반):
+- 가장 큰 비중: {max_cat} ({max_val:,.2f}, {max_pct:.1f}%)
 - 총 {len(pie_data)}개 범주
 - 전체 합계: {pie_data[f'{value_col}_합계'].sum():,.2f}
                                     """
