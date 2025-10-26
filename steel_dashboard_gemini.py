@@ -1639,10 +1639,14 @@ print(time_data)
 
 """
                                 for _, row in range_counts.iterrows():
-                                    insights_text += f"- {row['범위']}: {row['개수']:,}개 ({row['비율(%)']:.1f}%)\n"
+                                    cnt = int(row['개수'])
+                                    pct = round(row['비율(%)'], 1)
+                                    insights_text += f"- {row['범위']}: {cnt}개 ({pct}%)\n"
                                 
                                 max_group = range_counts.iloc[0]
-                                insights_text += f"\n**가장 많은 그룹**: {max_group['범위']} ({max_group['비율(%)']:.1f}%)"
+                                max_pct = round(max_group['비율(%)'], 1)
+                                insights_text += f"\n가장 많은 그룹: {max_group['범위']} ({max_pct}%)"
+
                                 
                                 st.info(insights_text)
                                 
@@ -1954,12 +1958,13 @@ fig.show()
                                     max_val = pie_data['개수'].max()
                                     max_pct = (max_val / pie_data['개수'].sum() * 100)
                                     total_count = pie_data['개수'].sum()
+                                    max_pct_val = round(max_pct, 1)
                                     
                                     insights_text = f"""
 파이차트 인사이트 (개수 기반):
-- 가장 많은 범주: {max_cat} ({max_val:,}개, {max_pct:.1f}%)
+- 가장 많은 범주: {max_cat} ({max_val}개, {max_pct_val}%)
 - 총 {len(pie_data)}개 범주
-- 전체 개수: {total_count:,}개
+- 전체 개수: {total_count}개
                                     """
                                     
                                     st.success(insights_text)
@@ -2024,12 +2029,16 @@ fig.show()
                                     max_cat = pie_data.loc[pie_data[f'{value_col}_합계'].idxmax(), cat_col]
                                     max_val = pie_data[f'{value_col}_합계'].max()
                                     max_pct = (max_val / pie_data[f'{value_col}_합계'].sum() * 100)
+                                    total_sum = pie_data[f'{value_col}_합계'].sum()
+                                    max_pct_val = round(max_pct, 1)
+                                    max_val_round = round(max_val, 2)
+                                    total_sum_round = round(total_sum, 2)
                                     
                                     insights_text = f"""
 파이차트 인사이트 (값 기반):
-- 가장 큰 비중: {max_cat} ({max_val:,.2f}, {max_pct:.1f}%)
+- 가장 큰 비중: {max_cat} ({max_val_round}, {max_pct_val}%)
 - 총 {len(pie_data)}개 범주
-- 전체 합계: {pie_data[f'{value_col}_합계'].sum():,.2f}
+- 전체 합계: {total_sum_round}
                                     """
                                     
                                     st.success(insights_text)
