@@ -1718,30 +1718,8 @@ fig.show()
                         else:
                             st.error("❌ 분석할 수치 컬럼을 찾을 수 없습니다.")
                             st.info(f"사용 가능한 수치 컬럼: {', '.join(numeric_cols)}")
-                                        if value <= boundaries[0]:
-                                            return f"{group_names[0]}그룹"
-                                        else:
-                                            return f"{group_names[1]}그룹"
-                                    elif len(boundaries) == 3:
-                                        # 3개 경계: 0-400, 400-500, 500+
-                                        if value <= boundaries[1]:
-                                            return f"{group_names[0]}그룹"
-                                        elif value <= boundaries[2]:
-                                            return f"{group_names[1]}그룹"
-                                        else:
-                                            return f"{group_names[2]}그룹" if len(group_names) > 2 else f"{group_names[1]}그룹"
-                                    else:
-                                        # 일반적인 경우
-                                        for i, boundary in enumerate(boundaries[:-1]):
-                                            if value <= boundary:
-                                                return f"{group_names[min(i, len(group_names)-1)]}그룹"
-                                        return f"{group_names[-1]}그룹"
-                                
-                                # 범위 그룹 생성
-                                df_copy = df_work.copy()
-                                df_copy['range_group'] = df_copy[value_col].apply(assign_group)
-                                
-                                # 그룹별 개수 계산
+                    
+                    # === 단일 범위 기반 파이차트 (기존) ===
                                 range_counts = df_copy['range_group'].value_counts().reset_index()
                                 range_counts.columns = ['범위', '개수']
                                 
