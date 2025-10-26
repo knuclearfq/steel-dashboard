@@ -1353,6 +1353,8 @@ print(time_data)
                     
                     # 1. 날짜 컬럼 제외
                     date_keywords = ['date', 'wrk_date', 'dt', 'timestamp']
+                    date_cols = [col for col in df_work.columns 
+                                if any(kw in col.lower() for kw in date_keywords)]
                     non_date_cat_cols = [col for col in df_work.select_dtypes(include=['object']).columns 
                                         if not any(kw in col.lower() for kw in date_keywords)]
                     
@@ -1373,21 +1375,40 @@ print(time_data)
                         threshold = numbers[0]
                         st.info(f"범위 기준: {threshold}")
                         
-                        # value_col 찾기 (질문에서 명시된 컬럼 우선)
+                        # value_col 찾기 - 질문에서 컬럼명 검색 (모든 컬럼 대상)
                         value_col = None
-                        if mentioned_col:
-                            value_col = mentioned_col
-                        else:
-                            # 질문에서 숫자형 컬럼 찾기
+                        
+                        # 1. 질문에서 컬럼명 직접 검색 (전체 컬럼)
+                        for col in df_work.columns:
+                            if col in user_question:
+                                # 숫자로 변환 가능한지 확인
+                                try:
+                                    pd.to_numeric(df_work[col], errors='coerce')
+                                    value_col = col
+                                    st.success(f"감지된 컬럼: {col}")
+                                    break
+                                except:
+                                    continue
+                        
+                        # 2. 숫자형 컬럼 중 질문에 있는 것
+                        if not value_col:
                             for col in numeric_cols:
                                 if col in user_question:
                                     value_col = col
                                     break
-                            if not value_col and numeric_cols:
-                                value_col = numeric_cols[0]
+                        
+                        # 3. 첫 번째 숫자형 컬럼
+                        if not value_col and numeric_cols:
+                            value_col = numeric_cols[0]
                         
                         if value_col:
                             df_copy = df_work.copy()
+                            
+                            # 숫자 변환 (object 타입 대응)
+                            if df_copy[value_col].dtype == 'object':
+                                df_copy[value_col] = pd.to_numeric(df_copy[value_col], errors='coerce')
+                                df_copy = df_copy.dropna(subset=[value_col])
+                            
                             df_copy['범위'] = df_copy[value_col].apply(
                                 lambda x: f'{threshold} 미만' if x < threshold else f'{threshold} 이상'
                             )
