@@ -26,6 +26,10 @@ def get_apps_script_config():
     web_app_url = config.get("web_app_url")
     api_key = config.get("api_key")
     
+    # 디버깅: API 키 확인 (첫 5글자만)
+    if api_key:
+        st.sidebar.caption(f"🔑 API Key: {api_key[:5]}...")
+    
     return web_app_url, api_key
 
 # ============================================
@@ -55,7 +59,17 @@ def load_history_summary(web_app_url, api_key):
                 else:
                     return pd.DataFrame()
             else:
-                st.error(f"❌ API 에러: {result.get('error')}")
+                error_msg = result.get('error', 'Unknown error')
+                debug_info = result.get('debug', {})
+                
+                if debug_info:
+                    st.error(f"❌ API 에러: {error_msg}")
+                    st.error(f"🔑 받은 키: {debug_info.get('received', 'N/A')}")
+                    st.error(f"🔑 예상 키: {debug_info.get('expected', 'N/A')}")
+                    st.info("💡 Streamlit secrets와 Apps Script의 API 키가 일치하는지 확인하세요!")
+                else:
+                    st.error(f"❌ API 에러: {error_msg}")
+                
                 return pd.DataFrame()
         else:
             st.error(f"❌ HTTP 에러: {response.status_code}")
@@ -375,31 +389,54 @@ def render_full_history_ui():
                 )
                 st.plotly_chart(fig, use_container_width=True)
             
-            # 각 히스토리별 그래프 (토글로 표시)
-            st.markdown("#### 🔍 히스토리별 그래프")
+            st.divider()
             
+            # === 1+2단계: 히스토리 목록 + 그래프 자동 표시 ===
+            st.markdown("### 📋 분석 히스토리")
+            
+            # 2단계를 위한 모든 ID 수집
+            all_ids = stats_df['ID'].tolist() if 'ID' in stats_df.columns else []
+            
+            # 2단계: 모든 그래프 한 번에 조회
+            with st.spinner("📊 그래프 로딩 중..."):
+                graph_map = {}
+                for history_id in all_ids:
+                    if history_id:
+                        graph_data = load_graph_by_id(web_app_url, api_key, history_id)
+                        if graph_data:
+                            graph_map[history_id] = graph_data.get('그래프_설정_JSON', '')
+            
+            # 1+2단계 결과 표시: 히스토리 + 그래프
             for idx, row in stats_df.iterrows():
                 history_id = row.get('ID', '')
+                timestamp = row.get('타임스탬프', '')
                 question = row.get('질문', '')
+                time_unit = row.get('시간단위', '')
+                chart_type = row.get('그래프타입', '')
                 
                 if not history_id:
                     continue
                 
-                with st.expander(f"📊 {question[:50]}..."):
-                    # 그래프 로딩 버튼
-                    if st.button(f"그래프 보기", key=f"load_graph_{history_id}"):
-                        with st.spinner("그래프 로딩 중..."):
-                            graph_data = load_graph_by_id(web_app_url, api_key, history_id)
-                            
-                            if graph_data and graph_data.get('그래프_설정_JSON'):
-                                try:
-                                    graph_json = graph_data['그래프_설정_JSON']
-                                    fig = go.Figure(json.loads(graph_json))
-                                    st.plotly_chart(fig, use_container_width=True)
-                                except Exception as e:
-                                    st.error(f"그래프 로딩 실패: {e}")
-                            else:
-                                st.warning("그래프 데이터 없음")
+                with st.expander(f"📊 {question}", expanded=False):
+                    # 기본 정보
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.caption(f"🕐 {timestamp}")
+                    with col2:
+                        st.caption(f"📈 {chart_type}")
+                    with col3:
+                        st.caption(f"⏱️ {time_unit}")
+                    
+                    # 그래프 자동 표시
+                    if history_id in graph_map and graph_map[history_id]:
+                        try:
+                            graph_json = graph_map[history_id]
+                            fig = go.Figure(json.loads(graph_json))
+                            st.plotly_chart(fig, use_container_width=True)
+                        except Exception as e:
+                            st.error(f"그래프 로딩 실패: {e}")
+                    else:
+                        st.info("그래프 데이터 없음")
         else:
             st.info("📭 아직 저장된 분석이 없습니다")
     
