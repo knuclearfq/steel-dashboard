@@ -409,7 +409,9 @@ def render_full_history_ui():
             st.info("📭 아직 저장된 분석이 없습니다")
             return
         
-        # 각 히스토리 항목 표시 (그래프는 개별 로딩)
+        # === 1단계 완료: 모든 히스토리 항목 리스트 먼저 표시 ===
+        history_containers = []
+        
         for idx, row in stats_df.iterrows():
             history_id = row.get('ID', '')
             timestamp = row.get('타임스탬프', '')
@@ -424,10 +426,9 @@ def render_full_history_ui():
             if idx > 0:
                 st.divider()
             
-            # 히스토리 제목
+            # 히스토리 제목 및 기본 정보 (즉시 표시!)
             st.markdown(f"### 📊 {question}")
             
-            # 기본 정보
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.caption(f"🕐 {timestamp}")
@@ -436,43 +437,66 @@ def render_full_history_ui():
             with col3:
                 st.caption(f"⏱️ {time_unit}")
             
-            # 2단계: 개별 그래프 로딩
-            graph_loaded = False
+            # 그래프 영역 예약 (나중에 채워짐)
+            graph_placeholder = st.empty()
+            buttons_placeholder = st.empty()
+            detail_placeholder = st.empty()
             
-            with st.spinner(f"그래프 로딩 중..."):
-                graph_data = load_graph_by_id(web_app_url, api_key, history_id)
+            # 컨테이너 저장
+            history_containers.append({
+                'id': history_id,
+                'graph_placeholder': graph_placeholder,
+                'buttons_placeholder': buttons_placeholder,
+                'detail_placeholder': detail_placeholder
+            })
+        
+        # === 2단계: 그래프 순차적으로 로딩 (리스트 표시 후) ===
+        for container in history_containers:
+            history_id = container['id']
+            graph_placeholder = container['graph_placeholder']
+            buttons_placeholder = container['buttons_placeholder']
+            detail_placeholder = container['detail_placeholder']
+            
+            # 그래프 로딩
+            graph_data = load_graph_by_id(web_app_url, api_key, history_id)
             
             if graph_data and graph_data.get('그래프_설정_JSON'):
                 try:
                     graph_json = graph_data['그래프_설정_JSON']
                     fig = go.Figure(json.loads(graph_json))
                     
-                    # 그래프 표시
-                    st.plotly_chart(fig, use_container_width=True, key=f"graph_{history_id}")
-                    graph_loaded = True
+                    # 그래프 표시 (placeholder에)
+                    with graph_placeholder:
+                        st.plotly_chart(fig, use_container_width=True, key=f"graph_{history_id}")
                     
-                    # 다운로드 버튼 (항상 표시)
-                    col1, col2, col3 = st.columns([1, 1, 4])
-                    
-                    with col1:
-                        # HTML 다운로드
-                        html_str = fig.to_html(include_plotlyjs='cdn')
-                        st.download_button(
-                            label="📄 HTML",
-                            data=html_str,
-                            file_name=f"graph_{history_id}.html",
-                            mime="text/html",
-                            key=f"html_{history_id}",
-                            help="그래프를 HTML 파일로 저장"
-                        )
-                    
-                    with col2:
-                        # CSV 다운로드 버튼
-                        csv_clicked = st.button("📊 CSV", key=f"csv_btn_{history_id}", help="데이터를 CSV로 저장")
-                    
-                    # CSV 클릭 시 처리
-                    if csv_clicked:
-                        with st.spinner("데이터 로딩 중..."):
+                    # 다운로드 버튼 표시
+                    with buttons_placeholder:
+                        col1, col2, col3 = st.columns([1, 1, 4])
+                        
+                        with col1:
+                            # HTML 다운로드
+                            html_str = fig.to_html(include_plotlyjs='cdn')
+                            st.download_button(
+                                label="📄 HTML",
+                                data=html_str,
+                                file_name=f"graph_{history_id}.html",
+                                mime="text/html",
+                                key=f"html_{history_id}",
+                                help="그래프를 HTML 파일로 저장",
+                                use_container_width=True
+                            )
+                        
+                        with col2:
+                            # CSV 버튼
+                            csv_clicked = st.button(
+                                "📊 CSV", 
+                                key=f"csv_btn_{history_id}", 
+                                help="데이터를 CSV로 저장",
+                                use_container_width=True
+                            )
+                        
+                        # CSV 클릭 처리
+                        if csv_clicked:
                             full_data = load_full_history_by_id(web_app_url, api_key, history_id)
                             if full_data and full_data.get('데이터_JSON'):
                                 try:
@@ -493,79 +517,80 @@ def render_full_history_ui():
                                 st.warning("데이터 없음")
                 
                 except Exception as e:
-                    st.error(f"❌ 그래프 로딩 실패: {e}")
-                    st.caption(f"에러 상세: {str(e)}")
+                    with graph_placeholder:
+                        st.error(f"❌ 그래프 로딩 실패: {e}")
             else:
-                st.info("💡 그래프 데이터가 저장되지 않았습니다")
+                with graph_placeholder:
+                    st.info("💡 그래프 데이터가 저장되지 않았습니다")
             
-            # 개별 상세정보 체크박스
-            show_detail = st.checkbox(
-                "🔍 상세정보 보기 (데이터, 코드, 인사이트)",
-                key=f"detail_{history_id}",
-                value=False
-            )
-            
-            # 3단계: 체크박스 클릭 시 해당 항목만 Full 로딩
-            if show_detail:
-                with st.spinner(f"상세정보 로딩 중..."):
-                    full_data = load_full_history_by_id(web_app_url, api_key, history_id)
-                    
-                    if full_data:
-                        tabs = st.tabs(["📋 데이터", "💻 코드", "💡 인사이트"])
+            # 상세정보 체크박스
+            with detail_placeholder:
+                show_detail = st.checkbox(
+                    "🔍 상세정보 보기 (데이터, 코드, 인사이트)",
+                    key=f"detail_{history_id}",
+                    value=False
+                )
+                
+                if show_detail:
+                    with st.spinner(f"상세정보 로딩 중..."):
+                        full_data = load_full_history_by_id(web_app_url, api_key, history_id)
                         
-                        # 데이터 탭
-                        with tabs[0]:
-                            data_json = full_data.get('데이터_JSON', '')
-                            if data_json:
-                                try:
-                                    data = json.loads(data_json)
-                                    df = pd.DataFrame(data)
-                                    st.dataframe(df, use_container_width=True, key=f"data_{history_id}")
-                                    st.caption(f"총 {len(df):,}행")
-                                    
-                                    # CSV 다운로드
-                                    csv = df.to_csv(index=False).encode('utf-8-sig')
-                                    st.download_button(
-                                        label="📥 CSV 다운로드",
-                                        data=csv,
-                                        file_name=f"data_{history_id}.csv",
-                                        mime="text/csv",
-                                        key=f"csv_detail_{history_id}"
-                                    )
-                                except Exception as e:
-                                    st.error(f"데이터 복원 실패: {e}")
-                            else:
-                                st.info("데이터 없음")
-                        
-                        # 코드 탭
-                        with tabs[1]:
-                            col1, col2 = st.columns(2)
+                        if full_data:
+                            tabs = st.tabs(["📋 데이터", "💻 코드", "💡 인사이트"])
                             
-                            with col1:
-                                st.markdown("**🔧 데이터 처리 코드**")
-                                data_code = full_data.get('데이터_처리_코드', '')
-                                if data_code:
-                                    st.code(data_code, language="python")
+                            # 데이터 탭
+                            with tabs[0]:
+                                data_json = full_data.get('데이터_JSON', '')
+                                if data_json:
+                                    try:
+                                        data = json.loads(data_json)
+                                        df = pd.DataFrame(data)
+                                        st.dataframe(df, use_container_width=True, key=f"data_{history_id}")
+                                        st.caption(f"총 {len(df):,}행")
+                                        
+                                        # CSV 다운로드
+                                        csv = df.to_csv(index=False).encode('utf-8-sig')
+                                        st.download_button(
+                                            label="📥 CSV 다운로드",
+                                            data=csv,
+                                            file_name=f"data_{history_id}.csv",
+                                            mime="text/csv",
+                                            key=f"csv_detail_{history_id}"
+                                        )
+                                    except Exception as e:
+                                        st.error(f"데이터 복원 실패: {e}")
                                 else:
-                                    st.info("코드 없음")
+                                    st.info("데이터 없음")
                             
-                            with col2:
-                                st.markdown("**📊 그래프 생성 코드**")
-                                graph_code = full_data.get('그래프_생성_코드', '')
-                                if graph_code:
-                                    st.code(graph_code, language="python")
+                            # 코드 탭
+                            with tabs[1]:
+                                col1, col2 = st.columns(2)
+                                
+                                with col1:
+                                    st.markdown("**🔧 데이터 처리 코드**")
+                                    data_code = full_data.get('데이터_처리_코드', '')
+                                    if data_code:
+                                        st.code(data_code, language="python")
+                                    else:
+                                        st.info("코드 없음")
+                                
+                                with col2:
+                                    st.markdown("**📊 그래프 생성 코드**")
+                                    graph_code = full_data.get('그래프_생성_코드', '')
+                                    if graph_code:
+                                        st.code(graph_code, language="python")
+                                    else:
+                                        st.info("코드 없음")
+                            
+                            # 인사이트 탭
+                            with tabs[2]:
+                                insights = full_data.get('인사이트요약', '')
+                                if insights:
+                                    st.info(insights)
                                 else:
-                                    st.info("코드 없음")
-                        
-                        # 인사이트 탭
-                        with tabs[2]:
-                            insights = full_data.get('인사이트요약', '')
-                            if insights:
-                                st.info(insights)
-                            else:
-                                st.info("인사이트 없음")
-                    else:
-                        st.error("상세정보를 불러올 수 없습니다")
+                                    st.info("인사이트 없음")
+                        else:
+                            st.error("상세정보를 불러올 수 없습니다")
     
     except Exception as e:
         st.error(f"❌ 히스토리 로딩 실패: {e}")
