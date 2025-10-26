@@ -969,9 +969,10 @@ print(pivot_table)
                             fig = px.scatter(time_data, x=x_label, y=mentioned_col,
                                            title=chart_title, size_max=10)
                         elif chart_type == "pie":
-                            # 파이차트는 시계열에 부적합하지만 요청 시 생성
-                            fig = px.pie(time_data, names=x_label, values=mentioned_col,
-                                        title=chart_title)
+                            # 파이차트는 시계열 분석에 부적합
+                            st.warning("파이차트는 시계열 데이터에 적합하지 않습니다. 아래 별도 섹션을 이용해주세요.")
+                            fig = px.line(time_data, x=x_label, y=mentioned_col,
+                                        markers=True, title=chart_title)
                         elif chart_type == "box":
                             # 박스플롯은 원본 데이터 필요
                             fig = px.box(temp_df, y=mentioned_col,
