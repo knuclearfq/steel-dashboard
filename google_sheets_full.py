@@ -207,7 +207,7 @@ def save_full_history(web_app_url, api_key, history_entry):
             "result_type": history_entry.get("result_type", ""),
             "time_unit": history_entry.get("time_unit", ""),
             "chart_type": history_entry.get("chart_type", ""),
-            "insights": (history_entry.get("insights", "") or "")[:500],
+            "insights": (history_entry.get("insights", "") or "")[:20000],
             "data_json": data_json,
             "data_code": history_entry.get("data_code", ""),
             "graph_code": history_entry.get("code", ""),
