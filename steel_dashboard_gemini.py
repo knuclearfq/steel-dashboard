@@ -1343,6 +1343,12 @@ print(time_data)
                 elif chart_type == "pie" and wants_graph:
                     st.markdown("### 파이차트 분석")
                     
+                    # df_work 정의
+                    if 'df_filtered' in st.session_state:
+                        df_work = st.session_state.df_filtered
+                    else:
+                        df_work = df_facility
+                    
                     import re
                     
                     # 1. 날짜 컬럼 제외
