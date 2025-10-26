@@ -16,7 +16,7 @@ warnings.filterwarnings('ignore')
 
 # --- 페이지 설정 ---
 st.set_page_config(page_title="철강 설비 AI 대시보드", layout="wide")
-st.title("🤖 철강 설비 AI 에이전트 대시보드")
+st.title(" 철강 설비 AI 에이전트 대시보드")
 
 # 세션 상태 초기화
 if 'error_logs' not in st.session_state:
@@ -128,7 +128,7 @@ def get_llm():
         from langchain_google_genai import ChatGoogleGenerativeAI
     except ImportError as e:
         error = log_error("ImportError", "langchain-google-genai 패키지 없음", str(e))
-        st.error(f"❌ {error['message']}")
+        st.error(f" {error['message']}")
         return None
     
     api_key = st.secrets.get("GOOGLE_API_KEY") if "GOOGLE_API_KEY" in st.secrets else os.getenv("GOOGLE_API_KEY")
@@ -156,13 +156,13 @@ def get_llm():
             )
             
             test = llm.invoke("Hi")
-            print(f"✅ 성공: {model_name}")
-            st.success(f"✅ Google Gemini ({model_name}) 로드 완료!")
+            print(f" 성공: {model_name}")
+            st.success(f" Google Gemini ({model_name}) 로드 완료!")
             return llm
             
         except Exception as e:
             log_error("ModelLoadError", f"{model_name} 로드 실패", str(e))
-            print(f"❌ 실패: {model_name} - {e}")
+            print(f" 실패: {model_name} - {e}")
             continue
     
     st.warning("⚠️ Gemini 로드 실패: AI 인사이트 없이 기본 분석 모드로 사용 가능합니다.")
@@ -172,7 +172,7 @@ llm = get_llm()
 
 # --- 데이터 로드 ---
 st.divider()
-st.subheader("📊 설비 데이터")
+st.subheader(" 설비 데이터")
 
 uploaded_file = st.file_uploader("CSV 파일 업로드", type=['csv'])
 
@@ -202,11 +202,11 @@ def load_data(file):
                     log_error("NumericConversionError", f"{col} 숫자 변환 실패", str(e))
         
         df.dropna(how='all', inplace=True)
-        st.success(f"✅ 로드 완료: {len(df):,}행 × {len(df.columns)}컬럼")
+        st.success(f" 로드 완료: {len(df):,}행 × {len(df.columns)}컬럼")
         return df
     except Exception as e:
         log_error("DataLoadError", "CSV 로딩 실패", str(e))
-        st.error(f"❌ 로딩 오류: {e}")
+        st.error(f" 로딩 오류: {e}")
         return None
 
 df_facility = None
@@ -214,9 +214,9 @@ df_facility = None
 if uploaded_file:
     df_facility = load_data(uploaded_file)
 else:
-    st.info("💡 CSV 파일을 업로드하세요")
+    st.info(" CSV 파일을 업로드하세요")
     
-    if st.button("🎲 샘플 데이터로 테스트"):
+    if st.button(" 샘플 데이터로 테스트"):
         import numpy as np
         np.random.seed(42)
         
@@ -238,26 +238,26 @@ else:
             'eaf_wat_sum': np.random.normal(5000, 1000, 300),
             'wat_unit': np.random.normal(450, 50, 300)
         })
-        st.success("✅ 샘플 데이터 생성 (300일, 이상치 포함)!")
+        st.success(" 샘플 데이터 생성 (300일, 이상치 포함)!")
         st.rerun()
 
 if df_facility is not None:
-    with st.expander("🔍 데이터 미리보기"):
+    with st.expander(" 데이터 미리보기"):
         st.dataframe(df_facility.head(10))
     
     col1, col2 = st.columns(2)
     with col1:
-        st.write(f"**📋 기본 정보:**")
+        st.write(f"** 기본 정보:**")
         st.write(f"- 행 수: {len(df_facility):,}")
         st.write(f"- 컬럼 수: {len(df_facility.columns)}")
         st.write(f"- 메모리: {df_facility.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
     with col2:
         numeric_cols = df_facility.select_dtypes(include=['int64', 'float64']).columns.tolist()
-        st.write(f"**📊 데이터 타입:**")
+        st.write(f"** 데이터 타입:**")
         st.write(f"- 수치형: {len(numeric_cols)}개")
         st.write(f"- 범주형: {len(df_facility.select_dtypes(include=['object']).columns)}개")
     
-    with st.expander("📋 컬럼 상세 정보"):
+    with st.expander(" 컬럼 상세 정보"):
         col_info = pd.DataFrame({
             '컬럼명': df_facility.columns,
             '데이터타입': df_facility.dtypes.values,
@@ -267,17 +267,17 @@ if df_facility is not None:
         st.dataframe(col_info)
     
     if numeric_cols:
-        with st.expander("📊 수치형 컬럼 통계"):
+        with st.expander(" 수치형 컬럼 통계"):
             st.dataframe(df_facility[numeric_cols].describe().T)
     
     # --- 데이터 전처리 옵션 ---
     st.divider()
-    st.subheader("🔧 데이터 전처리 설정")
+    st.subheader(" 데이터 전처리 설정")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        use_outlier_removal = st.checkbox("🎯 이상치 제거 사용", value=False, 
+        use_outlier_removal = st.checkbox(" 이상치 제거 사용", value=False, 
                                           help="통계적 방법으로 이상치/노이즈를 제거합니다")
     
     with col2:
@@ -311,17 +311,17 @@ if df_facility is not None:
     
     # --- AI 질의응답 ---
     st.divider()
-    st.subheader("💬 AI에게 질문하기")
+    st.subheader(" AI에게 질문하기")
     
     # === 필터 섹션 추가 ===
-    with st.expander("🔍 데이터 필터 (선택사항)", expanded=False):
+    with st.expander(" 데이터 필터 (선택사항)", expanded=False):
         st.caption("⚠️ 필터를 적용하면 선택한 조건에 맞는 데이터만 분석됩니다")
         
         col1, col2 = st.columns(2)
         
         with col1:
             # 날짜 필터
-            st.markdown("**📅 기간 필터**")
+            st.markdown("** 기간 필터**")
             date_cols = [col for col in df_facility.columns if 'date' in col.lower() or 'wrk_date' in col.lower()]
             
             if date_cols:
@@ -347,13 +347,13 @@ if df_facility is not None:
                     key="filter_end_date"
                 )
             else:
-                st.info("📅 날짜 컬럼이 없습니다")
+                st.info(" 날짜 컬럼이 없습니다")
                 filter_start_date = None
                 filter_end_date = None
         
         with col2:
             # 분류 필터 (대/중/소)
-            st.markdown("**🏷️ 분류 필터**")
+            st.markdown("**️ 분류 필터**")
             
             # 대분류
             if 'irn_larg_nm' in df_facility.columns:
@@ -361,7 +361,7 @@ if df_facility is not None:
                 filter_larg = st.selectbox("대분류 (irn_larg_nm)", larg_options, key="filter_larg")
             else:
                 filter_larg = '전체'
-                st.caption("💡 irn_larg_nm 컬럼이 없습니다")
+                st.caption(" irn_larg_nm 컬럼이 없습니다")
             
             # 중분류 (대분류에 종속)
             if 'irn_mid_nm' in df_facility.columns:
@@ -373,7 +373,7 @@ if df_facility is not None:
                 filter_mid = st.selectbox("중분류 (irn_mid_nm)", mid_options, key="filter_mid")
             else:
                 filter_mid = '전체'
-                st.caption("💡 irn_mid_nm 컬럼이 없습니다")
+                st.caption(" irn_mid_nm 컬럼이 없습니다")
             
             # 소분류 (중분류에 종속)
             if 'irn_sml_nm' in df_facility.columns:
@@ -391,12 +391,12 @@ if df_facility is not None:
                 filter_sml = st.selectbox("소분류 (irn_sml_nm)", sml_options, key="filter_sml")
             else:
                 filter_sml = '전체'
-                st.caption("💡 irn_sml_nm 컬럼이 없습니다")
+                st.caption(" irn_sml_nm 컬럼이 없습니다")
         
         # 필터 적용 버튼
         col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
         with col_btn1:
-            if st.button("✅ 필터 적용", type="primary", use_container_width=True):
+            if st.button(" 필터 적용", type="primary", use_container_width=True):
                 df_filtered = df_facility.copy()
                 
                 # 날짜 필터
@@ -416,21 +416,21 @@ if df_facility is not None:
                 
                 st.session_state.df_filtered = df_filtered
                 st.session_state.filter_applied = True
-                st.success(f"✅ 필터 적용 완료: {len(df_filtered):,}행 (원본: {len(df_facility):,}행)")
+                st.success(f" 필터 적용 완료: {len(df_filtered):,}행 (원본: {len(df_facility):,}행)")
         
         with col_btn2:
-            if st.button("🔄 필터 초기화", use_container_width=True):
+            if st.button(" 필터 초기화", use_container_width=True):
                 if 'df_filtered' in st.session_state:
                     del st.session_state.df_filtered
                 if 'filter_applied' in st.session_state:
                     del st.session_state.filter_applied
-                st.success("✅ 필터가 초기화되었습니다")
+                st.success(" 필터가 초기화되었습니다")
                 st.rerun()
     
     # 필터된 데이터 사용
     if 'df_filtered' in st.session_state and st.session_state.get('filter_applied', False):
         df_work = st.session_state.df_filtered
-        st.info(f"🔍 필터링된 데이터 사용 중: {len(df_work):,}행")
+        st.info(f" 필터링된 데이터 사용 중: {len(df_work):,}행")
     else:
         df_work = df_facility
     
@@ -442,7 +442,7 @@ if df_facility is not None:
         "Q5": "md_shft별 prod_wgt 월별 막대그래프"
     }
     
-    st.write("**💡 샘플 질문:**")
+    st.write("** 샘플 질문:**")
     cols = st.columns(5)
     for idx, (key, q) in enumerate(sample_qs.items()):
         if cols[idx].button(key, help=q, key=f"sample_q_{idx}"):
@@ -454,7 +454,7 @@ if df_facility is not None:
         placeholder="예: md_shft별로 prod_wgt 1월부터 8월까지 월별 막대그래프"
     )
     
-    if st.button("🚀 분석", type="primary"):
+    if st.button(" 분석", type="primary"):
         if user_question:
             try:
                 # === 질문 분석 (개선된 로직) ===
@@ -554,10 +554,10 @@ if df_facility is not None:
                 if wants_graph or is_time_series:
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.info(f"📊 감지된 그래프 타입: **{chart_type_kr}** ({detected_chart_reason})")
+                        st.info(f" 감지된 그래프 타입: **{chart_type_kr}** ({detected_chart_reason})")
                     with col2:
-                        st.info(f"🔍 감지된 시간 단위: **{time_unit_kr}** ({detected_reason})")
-                st.info(f"📊 감지된 그래프 타입: **{chart_type_kr}**")
+                        st.info(f" 감지된 시간 단위: **{time_unit_kr}** ({detected_reason})")
+                st.info(f" 감지된 그래프 타입: **{chart_type_kr}**")
                 
                 # 날짜 컬럼 찾기
                 date_col = None
@@ -568,7 +568,7 @@ if df_facility is not None:
                 
                 # 파이차트가 아니고 시계열 분석일 때만 날짜 컬럼 필수
                 if not date_col and (wants_graph or is_time_series) and chart_type != "pie":
-                    st.error("❌ 날짜 컬럼을 찾을 수 없습니다. 컬럼명에 'date'가 포함되어야 합니다.")
+                    st.error(" 날짜 컬럼을 찾을 수 없습니다. 컬럼명에 'date'가 포함되어야 합니다.")
                     log_error("ColumnNotFound", "날짜 컬럼 없음", f"사용 가능 컬럼: {df_work.columns.tolist()}")
                 
                 # 분석 컬럼 찾기
@@ -580,7 +580,7 @@ if df_facility is not None:
                 
                 # 파이차트가 아닐 때만 수치 컬럼 필수
                 if not mentioned_col and (wants_graph or is_time_series) and chart_type != "pie":
-                    st.error(f"❌ 분석할 수치 컬럼을 찾을 수 없습니다. 질문에 컬럼명을 포함해주세요: {', '.join(numeric_cols)}")
+                    st.error(f" 분석할 수치 컬럼을 찾을 수 없습니다. 질문에 컬럼명을 포함해주세요: {', '.join(numeric_cols)}")
                     log_error("ColumnNotFound", "수치 컬럼 없음", f"질문: {user_question}")
                 
                 # 그룹 컬럼 찾기
@@ -602,15 +602,15 @@ if df_facility is not None:
                     outlier_info = None
                     removed_count = 0
                     if use_outlier_removal:
-                        st.info(f"🔧 이상치 제거 중... (방법: {outlier_method}, 임계값: {outlier_threshold})")
+                        st.info(f" 이상치 제거 중... (방법: {outlier_method}, 임계값: {outlier_threshold})")
                         temp_df, removed_count, outlier_info = remove_outliers(
                             temp_df, mentioned_col, outlier_method, outlier_threshold
                         )
                         
                         if removed_count > 0:
-                            st.success(f"✅ 이상치 제거 완료: {removed_count:,}개 행 제거 ({removed_count/len(df_work)*100:.1f}%)")
+                            st.success(f" 이상치 제거 완료: {removed_count:,}개 행 제거 ({removed_count/len(df_work)*100:.1f}%)")
                         else:
-                            st.info("ℹ️ 제거된 이상치가 없습니다.")
+                            st.info(" 제거된 이상치가 없습니다.")
                     
                     # ⭐ 시간 단위에 따라 그룹화
                     if time_unit == "day":
@@ -643,7 +643,7 @@ if df_facility is not None:
                                 if 1 <= start_month <= 12 and 1 <= end_month <= 12:
                                     temp_df = temp_df[temp_df['time_group'].between(start_month, end_month)]
                                     range_filtered = True
-                                    st.success(f"📅 범위 필터링: {start_month}월 ~ {end_month}월")
+                                    st.success(f" 범위 필터링: {start_month}월 ~ {end_month}월")
                                     break
                     
                     elif time_unit == "day":
@@ -660,7 +660,7 @@ if df_facility is not None:
                                 temp_df = temp_df[(temp_df['time_group'] >= start_date) & 
                                                  (temp_df['time_group'] <= end_date)]
                                 range_filtered = True
-                                st.success(f"📅 범위 필터링: {start_date} ~ {end_date}")
+                                st.success(f" 범위 필터링: {start_date} ~ {end_date}")
                             except:
                                 pass
                         
@@ -684,16 +684,16 @@ if df_facility is not None:
                                     temp_df = temp_df[(temp_df['time_group'] >= start_date) & 
                                                      (temp_df['time_group'] <= end_date)]
                                     range_filtered = True
-                                    st.success(f"📅 범위 필터링: {start_date} ~ {end_date}")
+                                    st.success(f" 범위 필터링: {start_date} ~ {end_date}")
                                 except:
                                     pass
                     
                     if is_multi_series and group_col:
                         # === 다중 계열 분석 ===
-                        st.markdown(f"### 📈 계열별 {time_unit_kr} {chart_type_kr}")
+                        st.markdown(f"###  계열별 {time_unit_kr} {chart_type_kr}")
                         
                         if use_outlier_removal and removed_count > 0:
-                            st.caption(f"💡 이상치 제거 적용됨: {removed_count:,}개 데이터 포인트 제거")
+                            st.caption(f" 이상치 제거 적용됨: {removed_count:,}개 데이터 포인트 제거")
                         
                         multi = temp_df.groupby(['time_group', group_col])[mentioned_col].mean().reset_index()
                         multi.columns = [x_label, group_col, mentioned_col]
@@ -725,12 +725,12 @@ if df_facility is not None:
                         fig.update_layout(legend_title=group_col, height=500)
                         st.plotly_chart(fig, use_container_width=True, key=chart_key)
                         
-                        with st.expander("📊 계열별 데이터 테이블"):
+                        with st.expander(" 계열별 데이터 테이블"):
                             pivot = multi.pivot(index=x_label, columns=group_col, values=mentioned_col)
                             st.dataframe(pivot)
                             
                             st.markdown("---")
-                            st.markdown("#### 🔄 데이터 처리 프로세스")
+                            st.markdown("####  데이터 처리 프로세스")
                             
                             process_steps = f"""
 **1단계: 원본 데이터 로드**
@@ -740,7 +740,7 @@ if df_facility is not None:
 - 분석 컬럼: `{mentioned_col}`
 - 그룹 컬럼: `{group_col}`
 
-**2단계: 이상치 제거** {'✅ 적용됨' if use_outlier_removal else '❌ 적용 안 됨'}
+**2단계: 이상치 제거** {' 적용됨' if use_outlier_removal else ' 적용 안 됨'}
 {f"- 방법: {outlier_method}" if use_outlier_removal else ""}
 {f"- 제거된 행: {removed_count:,}개 ({removed_count/len(df_work)*100:.1f}%)" if use_outlier_removal and removed_count > 0 else ""}
 {f"- 남은 행: {len(temp_df):,}개" if use_outlier_removal else ""}
@@ -764,7 +764,7 @@ if df_facility is not None:
 """
                             st.markdown(process_steps)
                             
-                            st.markdown("#### 💻 데이터 처리 코드")
+                            st.markdown("####  데이터 처리 코드")
                             
                             data_code = f"""import pandas as pd
 
@@ -847,7 +847,7 @@ print(pivot_table)
                             
                             st.code(data_code, language="python")
                         
-                        with st.expander("💻 그래프 생성 코드"):
+                        with st.expander(" 그래프 생성 코드"):
                             code = f"""import plotly.express as px
 import pandas as pd
 
@@ -871,7 +871,7 @@ fig.show()"""
                             st.code(code, language="python")
                         
                         # 계열별 인사이트
-                        st.markdown("### 🎯 계열별 핵심 인사이트")
+                        st.markdown("###  계열별 핵심 인사이트")
                         
                         insights_text = ""
                         for group in sorted(temp_df[group_col].unique()):
@@ -905,8 +905,8 @@ fig.show()"""
 """
                                     insight = llm.invoke(prompt)
                                     ai_insight = insight.content
-                                    st.success(f"**🤖 AI 인사이트:**\n\n{ai_insight}")
-                                    insights_text += f"\n🤖 AI 분석:\n{ai_insight}"
+                                    st.success(f"** AI 인사이트:**\n\n{ai_insight}")
+                                    insights_text += f"\n AI 분석:\n{ai_insight}"
                                 except Exception as e:
                                     log_error("AIInsightError", "AI 인사이트 생성 실패", str(e))
                                     st.warning(f"⚠️ AI 인사이트 생성 실패: {e}")
@@ -1070,7 +1070,7 @@ print(pivot_table)
                         st.divider()
                         col_save1, col_save2, col_save3 = st.columns([2, 1, 2])
                         with col_save2:
-                            if st.button("💾 히스토리에 저장", type="primary", use_container_width=True, key="save_multi"):
+                            if st.button(" 히스토리에 저장", type="primary", use_container_width=True, key="save_multi"):
                                 add_to_full_history(
                                     question=st.session_state.last_analysis['question'],
                                     result_type=st.session_state.last_analysis['result_type'],
@@ -1082,16 +1082,16 @@ print(pivot_table)
                                     chart_type=st.session_state.last_analysis['chart_type'],
                                     time_unit=st.session_state.last_analysis['time_unit']
                                 )
-                                st.success("✅ 히스토리에 저장되었습니다!")
+                                st.success(" 히스토리에 저장되었습니다!")
                                 st.balloons()
 
                     
                     else:
                         # === 단일 계열 분석 ===
-                        st.markdown(f"### 📈 {time_unit_kr} {chart_type_kr}")
+                        st.markdown(f"###  {time_unit_kr} {chart_type_kr}")
                         
                         if use_outlier_removal and removed_count > 0:
-                            st.caption(f"💡 이상치 제거 적용됨: {removed_count:,}개 데이터 포인트 제거")
+                            st.caption(f" 이상치 제거 적용됨: {removed_count:,}개 데이터 포인트 제거")
                         
                         time_data = temp_df.groupby('time_group')[mentioned_col].mean().reset_index()
                         time_data.columns = [x_label, mentioned_col]
@@ -1131,11 +1131,11 @@ print(pivot_table)
                         fig.update_layout(height=500)
                         st.plotly_chart(fig, use_container_width=True, key=chart_key)
                         
-                        with st.expander("📊 데이터 테이블"):
+                        with st.expander(" 데이터 테이블"):
                             st.dataframe(time_data)
                             
                             st.markdown("---")
-                            st.markdown("#### 🔄 데이터 처리 프로세스")
+                            st.markdown("####  데이터 처리 프로세스")
                             
                             process_steps = f"""
 **1단계: 원본 데이터 로드**
@@ -1144,7 +1144,7 @@ print(pivot_table)
 - 날짜 컬럼: `{date_col}`
 - 분석 컬럼: `{mentioned_col}`
 
-**2단계: 이상치 제거** {'✅ 적용됨' if use_outlier_removal else '❌ 적용 안 됨'}
+**2단계: 이상치 제거** {' 적용됨' if use_outlier_removal else ' 적용 안 됨'}
 {f"- 방법: {outlier_method}" if use_outlier_removal else ""}
 {f"- 제거된 행: {removed_count:,}개 ({removed_count/len(df_work)*100:.1f}%)" if use_outlier_removal and removed_count > 0 else ""}
 {f"- 남은 행: {len(temp_df):,}개" if use_outlier_removal else ""}
@@ -1166,7 +1166,7 @@ print(pivot_table)
 """
                             st.markdown(process_steps)
                             
-                            st.markdown("#### 💻 데이터 처리 코드")
+                            st.markdown("####  데이터 처리 코드")
                             
                             data_code = f"""import pandas as pd
 
@@ -1243,7 +1243,7 @@ print(time_data)
                             
                             st.code(data_code, language="python")
                         
-                        with st.expander("💻 그래프 생성 코드"):
+                        with st.expander(" 그래프 생성 코드"):
                             if chart_type == "bar":
                                 code = f"""import plotly.express as px
 import pandas as pd
@@ -1327,7 +1327,7 @@ fig.show()"""
                         avg_val = time_data[mentioned_col].mean()
                         
                         insights_text = f"""
-**🎯 핵심 인사이트:**
+** 핵심 인사이트:**
 - 최고점: {max_time} ({max_val:,.2f})
 - 최저점: {min_time} ({min_val:,.2f})
 - 평균: {avg_val:,.2f}
@@ -1484,7 +1484,7 @@ print(time_data)
                         st.divider()
                         col_save1, col_save2, col_save3 = st.columns([2, 1, 2])
                         with col_save2:
-                            if st.button("💾 히스토리에 저장", type="primary", use_container_width=True, key="save_single"):
+                            if st.button(" 히스토리에 저장", type="primary", use_container_width=True, key="save_single"):
                                 add_to_full_history(
                                     question=st.session_state.last_analysis['question'],
                                     result_type=st.session_state.last_analysis['result_type'],
@@ -1496,13 +1496,13 @@ print(time_data)
                                     chart_type=st.session_state.last_analysis['chart_type'],
                                     time_unit=st.session_state.last_analysis['time_unit']
                                 )
-                                st.success("✅ 히스토리에 저장되었습니다!")
+                                st.success(" 히스토리에 저장되었습니다!")
                                 st.balloons()
 
                 
                 # === 우선순위 1.5: 파이차트 (시계열 아님) ===
                 elif chart_type == "pie" and wants_graph:
-                    st.markdown("### 🥧 파이차트 분석")
+                    st.markdown("###  파이차트 분석")
                     
                     # === 범위 기반 파이차트 감지 (대폭 개선) ===
                     import re
@@ -1517,34 +1517,34 @@ print(time_data)
                     all_numbers = []
                     
                     if has_range_keyword:
-                        st.info("🔍 범위 키워드 감지!")
+                        st.info(" 범위 키워드 감지!")
                         
                         # 숫자 추출 (연도 제외)
                         all_numbers = re.findall(r'\b(\d{1,4})\b', user_question)
                         all_numbers = [int(n) for n in all_numbers if 0 < int(n) < 10000 and int(n) != 2025 and int(n) != 2024]
-                        st.info(f"📊 추출된 숫자: {all_numbers}")
+                        st.info(f" 추출된 숫자: {all_numbers}")
                         
                         # 범위 감지 개선
                         if len(all_numbers) >= 1:
                             range_based = True
                             
                             # 다중 범위 패턴 감지
-                            # 예: "400미만과 400이상" → 2개 그룹
+                            # 예: "400미만과 400이상" -> 2개 그룹
                             range_indicators = ['미만', '이하', '이상', '초과']
                             range_count = sum(1 for kw in range_indicators if kw in user_question)
                             
                             if range_count >= 2 or ('과' in user_question and any(kw in user_question for kw in range_indicators)):
                                 multi_range = True
-                                st.info(f"🎯 다중 범위 감지: {range_count}개 조건, 경계값: {all_numbers}")
+                                st.info(f" 다중 범위 감지: {range_count}개 조건, 경계값: {all_numbers}")
                             else:
                                 threshold = all_numbers[0]
-                                st.info(f"🎯 단일 범위 감지: 기준값 {threshold}")
+                                st.info(f" 단일 범위 감지: 기준값 {threshold}")
                         else:
                             st.warning("⚠️ 범위 키워드는 있지만 기준값을 찾을 수 없습니다.")
                     
                     # === 다중 범위 기반 파이차트 ===
                     if range_based and multi_range:
-                        st.markdown("#### 📊 다중 범위 그룹 파이차트")
+                        st.markdown("####  다중 범위 그룹 파이차트")
                         
                         # 수치형 컬럼 찾기
                         value_col = None
@@ -1557,25 +1557,25 @@ print(time_data)
                                     break
                             if not value_col:
                                 value_col = numeric_cols[0]
-                            st.info(f"ℹ️ 분석 컬럼: **{value_col}**")
+                            st.info(f" 분석 컬럼: **{value_col}**")
                         
                         if value_col:
                             try:
                                 # 경계값 설정
                                 boundaries = sorted(set(all_numbers))
-                                st.info(f"📏 경계값: {boundaries}")
+                                st.info(f" 경계값: {boundaries}")
                                 
                                 # 범위 기반 그룹 생성 함수 (개선)
                                 def assign_group(value):
                                     if len(boundaries) == 1:
-                                        # 단일 경계: 400 → "400 미만", "400 이상"
+                                        # 단일 경계: 400 -> "400 미만", "400 이상"
                                         if '미만' in user_question:
                                             return f'{boundaries[0]} 미만' if value < boundaries[0] else f'{boundaries[0]} 이상'
                                         else:
                                             return f'{boundaries[0]} 이하' if value <= boundaries[0] else f'{boundaries[0]} 초과'
                                     
                                     elif len(boundaries) == 2:
-                                        # 2개 경계: 400, 500 → "400 미만", "400-500", "500 초과"
+                                        # 2개 경계: 400, 500 -> "400 미만", "400-500", "500 초과"
                                         if value < boundaries[0]:
                                             return f'{boundaries[0]} 미만'
                                         elif value < boundaries[1]:
@@ -1622,7 +1622,7 @@ print(time_data)
                                 st.plotly_chart(fig, use_container_width=True, key=f"pie_multi_{uuid.uuid4().hex[:8]}")
                                 
                                 # 상세 통계
-                                with st.expander("📊 상세 통계"):
+                                with st.expander(" 상세 통계"):
                                     st.dataframe(range_counts, use_container_width=True)
                                     
                                     col1, col2 = st.columns(2)
@@ -1634,8 +1634,8 @@ print(time_data)
                                 # 인사이트
                                 insights_text = f"""**{value_col} 범위별 분포 분석**
 
-**📏 경계값:** {', '.join(map(str, boundaries))}
-**📈 그룹별 데이터:**
+** 경계값:** {', '.join(map(str, boundaries))}
+** 그룹별 데이터:**
 
 """
                                 for _, row in range_counts.iterrows():
@@ -1688,7 +1688,7 @@ fig.update_traces(textposition='inside', textinfo='percent+label+value')
 fig.show()
 """
                                 
-                                with st.expander("💻 생성 코드"):
+                                with st.expander(" 생성 코드"):
                                     st.code(range_data_code, language="python")
                                     st.code(range_code, language="python")
                                 
@@ -1709,18 +1709,18 @@ fig.show()
                                 st.divider()
                                 col1, col2, col3 = st.columns([2, 1, 2])
                                 with col2:
-                                    if st.button("💾 히스토리에 저장", type="primary", use_container_width=True, key="save_pie_multi"):
+                                    if st.button(" 히스토리에 저장", type="primary", use_container_width=True, key="save_pie_multi"):
                                         add_to_full_history(**st.session_state.last_analysis)
-                                        st.success("✅ 저장 완료!")
+                                        st.success(" 저장 완료!")
                                         st.balloons()
                                 
                             except Exception as e:
-                                st.error(f"❌ 다중 범위 파이차트 생성 실패: {e}")
+                                st.error(f" 다중 범위 파이차트 생성 실패: {e}")
                                 st.exception(e)
                                 log_error("MultiRangePieChartError", "다중 범위 파이차트 오류", str(e))
                         
                         else:
-                            st.error("❌ 분석할 수치 컬럼을 찾을 수 없습니다.")
+                            st.error(" 분석할 수치 컬럼을 찾을 수 없습니다.")
                             st.info(f"사용 가능한 수치 컬럼: {', '.join(numeric_cols)}")
                     
                     # === 단일 범위 기반 파이차트 (기존) ===
@@ -1743,16 +1743,16 @@ fig.show()
                                 )
                                 
                             except Exception as e:
-                                st.error(f"❌ 다중 범위 파이차트 생성 실패: {e}")
+                                st.error(f" 다중 범위 파이차트 생성 실패: {e}")
                                 log_error("MultiRangePieChartError", "다중 범위 파이차트 오류", str(e))
                         
                         else:
-                            st.error("❌ 분석할 수치 컬럼을 찾을 수 없습니다.")
+                            st.error(" 분석할 수치 컬럼을 찾을 수 없습니다.")
                             st.info(f"사용 가능한 수치 컬럼: {', '.join(numeric_cols)}")
                     
                     # === 단일 범위 기반 파이차트 (기존) ===
                     elif range_based and threshold is not None:
-                        st.info(f"🎯 범위 기반 그룹핑 감지: **{threshold}** 기준")
+                        st.info(f" 범위 기반 그룹핑 감지: **{threshold}** 기준")
                         
                         # 수치형 컬럼 찾기
                         value_col = None
@@ -1765,7 +1765,7 @@ fig.show()
                                     break
                             if not value_col:
                                 value_col = numeric_cols[0]
-                            st.info(f"ℹ️ 분석 컬럼: **{value_col}**")
+                            st.info(f" 분석 컬럼: **{value_col}**")
                         
                         if value_col:
                             try:
@@ -1793,7 +1793,7 @@ fig.show()
                                 st.plotly_chart(fig, use_container_width=True)
                                 
                                 # 상세 통계
-                                with st.expander("📊 상세 통계"):
+                                with st.expander(" 상세 통계"):
                                     col1, col2 = st.columns(2)
                                     
                                     with col1:
@@ -1892,11 +1892,11 @@ fig.show()
                                 )
                                 
                             except Exception as e:
-                                st.error(f"❌ 범위 기반 파이차트 생성 실패: {e}")
+                                st.error(f" 범위 기반 파이차트 생성 실패: {e}")
                                 log_error("RangePieChartError", "범위 파이차트 오류", str(e))
                         
                         else:
-                            st.error("❌ 분석할 수치 컬럼을 찾을 수 없습니다.")
+                            st.error(" 분석할 수치 컬럼을 찾을 수 없습니다.")
                             st.info(f"사용 가능한 수치 컬럼: {', '.join(numeric_cols)}")
                     
                     # === 일반 파이차트 (기존 로직) ===
@@ -1913,7 +1913,7 @@ fig.show()
                         # 컬럼 못 찾으면 첫 번째 범주형 컬럼 사용
                         if not cat_col and cat_cols:
                             cat_col = cat_cols[0]
-                            st.info(f"ℹ️ 범주형 컬럼 자동 선택: **{cat_col}**")
+                            st.info(f" 범주형 컬럼 자동 선택: **{cat_col}**")
                         
                         # === 핵심: 수치형 컬럼이 질문에 명시되었는지 확인 ===
                         value_col = None
@@ -1923,9 +1923,9 @@ fig.show()
                         if mentioned_col:
                             value_col = mentioned_col
                             use_count_based = False
-                            st.info(f"ℹ️ 값 기반 파이차트: **{value_col}** 합계 사용")
+                            st.info(f" 값 기반 파이차트: **{value_col}** 합계 사용")
                         else:
-                            st.info(f"ℹ️ 개수 기반 파이차트: **{cat_col}** 범주별 개수")
+                            st.info(f" 개수 기반 파이차트: **{cat_col}** 범주별 개수")
                         
                         if cat_col:
                             try:
@@ -1949,7 +1949,7 @@ fig.show()
                                     st.plotly_chart(fig, use_container_width=True)
                                     
                                     # 데이터 테이블
-                                    with st.expander("📊 데이터 테이블"):
+                                    with st.expander(" 데이터 테이블"):
                                         pie_data['비율(%)'] = (pie_data['개수'] / pie_data['개수'].sum() * 100).round(2)
                                         st.dataframe(pie_data, use_container_width=True)
                                     
@@ -2021,7 +2021,7 @@ fig.show()
                                     st.plotly_chart(fig, use_container_width=True)
                                     
                                     # 데이터 테이블
-                                    with st.expander("📊 데이터 테이블"):
+                                    with st.expander(" 데이터 테이블"):
                                         pie_data['비율(%)'] = (pie_data[f'{value_col}_합계'] / pie_data[f'{value_col}_합계'].sum() * 100).round(2)
                                         st.dataframe(pie_data, use_container_width=True)
                                     
@@ -2089,35 +2089,35 @@ fig.show()
                                 )
                                 
                             except Exception as e:
-                                st.error(f"❌ 파이차트 생성 실패: {e}")
+                                st.error(f" 파이차트 생성 실패: {e}")
                                 log_error("PieChartError", "파이차트 생성 오류", str(e))
                         
                         else:
-                            st.error("❌ 파이차트에 필요한 범주형 컬럼을 찾을 수 없습니다.")
+                            st.error(" 파이차트에 필요한 범주형 컬럼을 찾을 수 없습니다.")
                             st.info(f"""
 **파이차트 요구사항:**
 - 범주형 컬럼: {', '.join(cat_cols) if cat_cols else '없음'}
 
  질문 예시:
-- "md_shft 파이차트" → 개수 기반
-- "md_shft별 prod_wgt 파이차트" → 값 기반
+- "md_shft 파이차트" -> 개수 기반
+- "md_shft별 prod_wgt 파이차트" -> 값 기반
                             """)
                             log_error("PieChartError", "필요 컬럼 없음", f"범주: {cat_cols}")
                 
                 # === 우선순위 2: 간단한 통계 ===
                 elif "행" in user_question or "row" in user_question_lower:
-                    result = f"📊 데이터 행 수: **{len(df_work):,}개**"
+                    result = f" 데이터 행 수: **{len(df_work):,}개**"
                     st.success(result)
                     add_to_full_history(user_question, "통계", insights=result, chart_type="N/A", time_unit="N/A")
                 
                 elif "컬럼" in user_question and not wants_graph:
-                    result = f"📋 컬럼: {', '.join(df_work.columns.tolist())}"
+                    result = f" 컬럼: {', '.join(df_work.columns.tolist())}"
                     st.success(result)
                     add_to_full_history(user_question, "통계", insights=result, chart_type="N/A", time_unit="N/A")
                 
                 elif "평균" in user_question and mentioned_col and not wants_graph and not is_time_series:
                     avg = df_work[mentioned_col].mean()
-                    result = f"📊 {mentioned_col} 평균: **{avg:,.2f}**"
+                    result = f" {mentioned_col} 평균: **{avg:,.2f}**"
                     st.success(result)
                     add_to_full_history(user_question, "통계", insights=result, chart_type="N/A", time_unit="N/A")
                 
@@ -2129,7 +2129,7 @@ fig.show()
                         st.dataframe(null_cols)
                         add_to_full_history(user_question, "결측치", data=pd.DataFrame(null_cols), chart_type="N/A", time_unit="N/A")
                     else:
-                        result = "✅ 결측치가 없습니다!"
+                        result = " 결측치가 없습니다!"
                         st.success(result)
                         add_to_full_history(user_question, "결측치", insights=result, chart_type="N/A", time_unit="N/A")
                 
@@ -2137,7 +2137,7 @@ fig.show()
                     st.warning("⚠️ 질문을 이해하지 못했습니다.")
                     log_error("QuestionParseError", "질문 파싱 실패", user_question)
                     st.info("""
-**💡 질문 예시:**
+** 질문 예시:**
 
 **시간 단위:**
 - "md_shft별로 prod_wgt **일별** 추이 그래프"
@@ -2161,8 +2161,8 @@ fig.show()
             
             except Exception as e:
                 log_error("UnexpectedError", "예상치 못한 오류", traceback.format_exc())
-                st.error(f"❌ 오류 발생: {e}")
-                st.error("상세 오류는 하단 '🐛 에러 로그' 섹션을 확인하세요.")
+                st.error(f" 오류 발생: {e}")
+                st.error("상세 오류는 하단 ' 에러 로그' 섹션을 확인하세요.")
         
         else:
             st.warning("⚠️ 질문을 입력하세요")
@@ -2170,7 +2170,7 @@ fig.show()
     # --- 분석 히스토리 ---
     if len(st.session_state.analysis_history) > 0:
         st.divider()
-        st.subheader("📚 분석 히스토리")
+        st.subheader(" 분석 히스토리")
         
         st.write(f"**총 {len(st.session_state.analysis_history)}개의 분석 결과**")
         
@@ -2184,7 +2184,7 @@ fig.show()
                     st.plotly_chart(entry['figure'], use_container_width=True, key=history_key)
                     
                     # 그래프 생성 코드 표시
-                    with st.expander("💻 그래프 생성 코드", expanded=False):
+                    with st.expander(" 그래프 생성 코드", expanded=False):
                         if entry.get('code'):
                             st.code(entry['code'], language="python")
                         else:
@@ -2195,7 +2195,7 @@ fig.show()
                     st.dataframe(pd.DataFrame(entry['data']))
                     
                     # 데이터 처리 코드 표시
-                    with st.expander("💻 데이터 처리 코드", expanded=False):
+                    with st.expander(" 데이터 처리 코드", expanded=False):
                         if entry.get('data_code'):
                             st.code(entry['data_code'], language="python")
                         else:
@@ -2207,14 +2207,14 @@ fig.show()
         
         col1, col2 = st.columns([1, 5])
         with col1:
-            if st.button("🗑️ 히스토리 초기화", key="clear_history"):
+            if st.button("️ 히스토리 초기화", key="clear_history"):
                 st.session_state.analysis_history = []
                 st.rerun()
 
 # --- 에러 로그 섹션 ---
 if len(st.session_state.error_logs) > 0:
     st.divider()
-    st.subheader("🐛 에러 로그")
+    st.subheader(" 에러 로그")
     
     with st.expander(f"⚠️ 에러 {len(st.session_state.error_logs)}개 발생 - 클릭하여 확인", expanded=False):
         for idx, error in enumerate(reversed(st.session_state.error_logs[-10:]), 1):
@@ -2228,12 +2228,12 @@ if len(st.session_state.error_logs) > 0:
             with st.expander(f"상세 정보 {idx}"):
                 st.code(error['details'], language="python")
         
-        if st.button("🗑️ 에러 로그 초기화", key="clear_errors"):
+        if st.button("️ 에러 로그 초기화", key="clear_errors"):
             st.session_state.error_logs = []
             st.rerun()
 
 st.divider()
-st.caption("🔧 철강 설비 AI 대시보드 v13.0 | 최적화된 히스토리 UI | Gemini 2.5")
+st.caption(" 철강 설비 AI 대시보드 v13.0 | 최적화된 히스토리 UI | Gemini 2.5")
 
 # === Google Sheets 히스토리 (그래프는 항상, 상세정보는 토글) ===
 render_full_history_ui()
