@@ -203,10 +203,8 @@ def save_full_history(web_app_url, api_key, history_entry):
             except:
                 pass
         
-        # POST 데이터 준비
+        # POST 데이터 준비 (API 키는 제외)
         payload = {
-            "action": "add",
-            "api_key": api_key,
             "id": history_entry.get("id", "")[:8],
             "timestamp": history_entry.get("timestamp", ""),
             "question": history_entry.get("question", ""),
@@ -215,15 +213,17 @@ def save_full_history(web_app_url, api_key, history_entry):
             "chart_type": history_entry.get("chart_type", ""),
             "insights": (history_entry.get("insights", "") or "")[:500],
             "data_json": data_json,
-            "data_processing_code": history_entry.get("data_code", ""),
+            "data_code": history_entry.get("data_code", ""),
             "graph_code": history_entry.get("code", ""),
-            "graph_config_json": graph_config_json
+            "graph_json": graph_config_json
         }
         
+        # API 키는 URL parameter로 전달 (Apps Script의 e.parameter에서 읽음)
         response = requests.post(
             web_app_url,
+            params={"api_key": api_key},  # ✅ URL parameter로!
             json=payload,
-            timeout=30  # 큰 데이터를 위해 timeout 증가
+            timeout=30
         )
         
         if response.status_code == 200:
@@ -232,7 +232,13 @@ def save_full_history(web_app_url, api_key, history_entry):
             if result.get("success"):
                 return True, "저장 성공"
             else:
-                return False, f"저장 실패: {result.get('error')}"
+                error_msg = result.get('error', 'Unknown error')
+                debug_info = result.get('debug', {})
+                
+                if debug_info:
+                    return False, f"저장 실패: {error_msg}\n🔑 받은: {debug_info.get('received')}\n🔑 예상: {debug_info.get('expected')}"
+                else:
+                    return False, f"저장 실패: {error_msg}"
         else:
             return False, f"HTTP 에러: {response.status_code}"
             
