@@ -468,7 +468,7 @@ def render_full_history_ui():
             # 3단계: 체크박스 클릭 시 해당 항목만 Full 로딩
             if show_detail:
                 with st.spinner(f"상세정보 로딩 중..."):
-                    full_data = load_history_by_id(web_app_url, api_key, history_id)
+                    full_data = load_full_history_by_id(web_app_url, api_key, history_id)
                     
                     if full_data:
                         tabs = st.tabs(["📋 데이터", "💻 코드", "💡 인사이트"])
