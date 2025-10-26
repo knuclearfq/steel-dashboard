@@ -1632,7 +1632,7 @@ print(time_data)
                                         st.metric("그룹 수", len(range_counts))
                                 
                                 # 인사이트
-                                insights_text = f"""📊 **{value_col} 범위별 분포 분석**
+                                insights_text = f"""**{value_col} 범위별 분포 분석**
 
 **📏 경계값:** {', '.join(map(str, boundaries))}
 **📈 그룹별 데이터:**
@@ -1642,7 +1642,7 @@ print(time_data)
                                     insights_text += f"- **{row['범위']}**: {row['개수']:,}개 ({row['비율(%)']:.1f}%)\n"
                                 
                                 max_group = range_counts.iloc[0]
-                                insights_text += f"\n✅ **가장 많은 그룹**: {max_group['범위']} ({max_group['비율(%)']:.1f}%)"
+                                insights_text += f"\n**가장 많은 그룹**: {max_group['범위']} ({max_group['비율(%)']:.1f}%)"
                                 
                                 st.info(insights_text)
                                 
@@ -1954,7 +1954,7 @@ fig.show()
                                     total_count = pie_data['개수'].sum()
                                     
                                     insights_text = f"""
-**🎯 파이차트 인사이트 (개수 기반):**
+파이차트 인사이트 (개수 기반):
 - 가장 많은 범주: **{max_cat}** ({max_val:,}개, {max_pct:.1f}%)
 - 총 {len(pie_data)}개 범주
 - 전체 개수: {total_count:,}개
