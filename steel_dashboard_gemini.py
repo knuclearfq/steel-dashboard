@@ -471,8 +471,8 @@ if df_facility is not None:
                             group_col = col
                             break
                 
-                # === 우선순위 1: 그래프 요청 ===
-                if (wants_graph or is_time_series) and date_col and mentioned_col:
+                # === 우선순위 1: 그래프 요청 (파이차트 제외) ===
+                if (wants_graph or is_time_series) and date_col and mentioned_col and chart_type != "pie":
                     
                     # 데이터 복사
                     temp_df = df_facility.copy()
