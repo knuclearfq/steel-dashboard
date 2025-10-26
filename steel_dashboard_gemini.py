@@ -1357,7 +1357,7 @@ print(time_data)
                                         if not any(kw in col.lower() for kw in date_keywords)]
                     
                     # 2. 범위 기반 파이차트 감지
-                    range_keywords = ['미만', '이하', '이상', '초과', '기준', '나눠', '구분']
+                    range_keywords = ['미만', '이만', '이하', '이상', '초과', '기준', '나눠', '구분', '분리', '나누']
                     has_range = any(kw in user_question for kw in range_keywords)
                     
                     # 숫자 추출
@@ -1373,7 +1373,18 @@ print(time_data)
                         threshold = numbers[0]
                         st.info(f"범위 기준: {threshold}")
                         
-                        value_col = mentioned_col if mentioned_col else (numeric_cols[0] if numeric_cols else None)
+                        # value_col 찾기 (질문에서 명시된 컬럼 우선)
+                        value_col = None
+                        if mentioned_col:
+                            value_col = mentioned_col
+                        else:
+                            # 질문에서 숫자형 컬럼 찾기
+                            for col in numeric_cols:
+                                if col in user_question:
+                                    value_col = col
+                                    break
+                            if not value_col and numeric_cols:
+                                value_col = numeric_cols[0]
                         
                         if value_col:
                             df_copy = df_work.copy()
@@ -1402,6 +1413,11 @@ print(time_data)
                         if not cat_col:
                             cat_col = non_date_cat_cols[0]
                         
+                        # 고유값 개수 확인
+                        n_unique = df_work[cat_col].nunique()
+                        if n_unique > 20:
+                            st.warning(f"{cat_col}의 고유값이 {n_unique}개로 많습니다. 상위 15개만 표시합니다.")
+                        
                         st.info(f"범주형 컬럼: {cat_col}")
                         
                         # 수치형 컬럼 확인
@@ -1412,15 +1428,23 @@ print(time_data)
                             pie_data = df_work.groupby(cat_col)[value_col].sum().reset_index()
                             pie_data.columns = [cat_col, '합계']
                             
+                            # 상위 15개만
+                            if len(pie_data) > 15:
+                                pie_data = pie_data.nlargest(15, '합계')
+                            
                             fig = px.pie(pie_data, names=cat_col, values='합계',
-                                        title=f'{cat_col}별 {value_col} 합계')
+                                        title=f'{cat_col}별 {value_col} 합계 (상위 15개)')
                         else:
                             # 개수 기반
                             pie_data = df_work[cat_col].value_counts().reset_index()
                             pie_data.columns = [cat_col, '개수']
                             
+                            # 상위 15개만
+                            if len(pie_data) > 15:
+                                pie_data = pie_data.head(15)
+                            
                             fig = px.pie(pie_data, names=cat_col, values='개수',
-                                        title=f'{cat_col}별 개수')
+                                        title=f'{cat_col}별 개수 (상위 15개)')
                     
                     else:
                         st.error("적절한 범주형 컬럼이 없습니다.")
