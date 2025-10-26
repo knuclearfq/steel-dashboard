@@ -313,6 +313,127 @@ if df_facility is not None:
     st.divider()
     st.subheader("💬 AI에게 질문하기")
     
+    # === 필터 섹션 추가 ===
+    with st.expander("🔍 데이터 필터 (선택사항)", expanded=False):
+        st.caption("⚠️ 필터를 적용하면 선택한 조건에 맞는 데이터만 분석됩니다")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # 날짜 필터
+            st.markdown("**📅 기간 필터**")
+            date_cols = [col for col in df_facility.columns if 'date' in col.lower() or 'wrk_date' in col.lower()]
+            
+            if date_cols:
+                date_col = date_cols[0]
+                df_facility[date_col] = pd.to_datetime(df_facility[date_col], errors='coerce')
+                
+                min_date = df_facility[date_col].min()
+                max_date = df_facility[date_col].max()
+                
+                filter_start_date = st.date_input(
+                    "시작날짜",
+                    value=min_date,
+                    min_value=min_date,
+                    max_value=max_date,
+                    key="filter_start_date"
+                )
+                
+                filter_end_date = st.date_input(
+                    "종료날짜",
+                    value=max_date,
+                    min_value=min_date,
+                    max_value=max_date,
+                    key="filter_end_date"
+                )
+            else:
+                st.info("📅 날짜 컬럼이 없습니다")
+                filter_start_date = None
+                filter_end_date = None
+        
+        with col2:
+            # 분류 필터 (대/중/소)
+            st.markdown("**🏷️ 분류 필터**")
+            
+            # 대분류
+            if 'irn_larg_nm' in df_facility.columns:
+                larg_options = ['전체'] + sorted(df_facility['irn_larg_nm'].dropna().unique().tolist())
+                filter_larg = st.selectbox("대분류 (irn_larg_nm)", larg_options, key="filter_larg")
+            else:
+                filter_larg = '전체'
+                st.caption("💡 irn_larg_nm 컬럼이 없습니다")
+            
+            # 중분류 (대분류에 종속)
+            if 'irn_mid_nm' in df_facility.columns:
+                if filter_larg != '전체':
+                    mid_filtered = df_facility[df_facility['irn_larg_nm'] == filter_larg]['irn_mid_nm'].dropna().unique()
+                    mid_options = ['전체'] + sorted(mid_filtered.tolist())
+                else:
+                    mid_options = ['전체'] + sorted(df_facility['irn_mid_nm'].dropna().unique().tolist())
+                filter_mid = st.selectbox("중분류 (irn_mid_nm)", mid_options, key="filter_mid")
+            else:
+                filter_mid = '전체'
+                st.caption("💡 irn_mid_nm 컬럼이 없습니다")
+            
+            # 소분류 (중분류에 종속)
+            if 'irn_sml_nm' in df_facility.columns:
+                if filter_mid != '전체':
+                    if filter_larg != '전체':
+                        sml_filtered = df_facility[
+                            (df_facility['irn_larg_nm'] == filter_larg) &
+                            (df_facility['irn_mid_nm'] == filter_mid)
+                        ]['irn_sml_nm'].dropna().unique()
+                    else:
+                        sml_filtered = df_facility[df_facility['irn_mid_nm'] == filter_mid]['irn_sml_nm'].dropna().unique()
+                    sml_options = ['전체'] + sorted(sml_filtered.tolist())
+                else:
+                    sml_options = ['전체'] + sorted(df_facility['irn_sml_nm'].dropna().unique().tolist())
+                filter_sml = st.selectbox("소분류 (irn_sml_nm)", sml_options, key="filter_sml")
+            else:
+                filter_sml = '전체'
+                st.caption("💡 irn_sml_nm 컬럼이 없습니다")
+        
+        # 필터 적용 버튼
+        col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
+        with col_btn1:
+            if st.button("✅ 필터 적용", type="primary", use_container_width=True):
+                df_filtered = df_facility.copy()
+                
+                # 날짜 필터
+                if filter_start_date and filter_end_date and date_cols:
+                    df_filtered = df_filtered[
+                        (df_filtered[date_col] >= pd.Timestamp(filter_start_date)) &
+                        (df_filtered[date_col] <= pd.Timestamp(filter_end_date))
+                    ]
+                
+                # 분류 필터
+                if filter_larg != '전체' and 'irn_larg_nm' in df_filtered.columns:
+                    df_filtered = df_filtered[df_filtered['irn_larg_nm'] == filter_larg]
+                if filter_mid != '전체' and 'irn_mid_nm' in df_filtered.columns:
+                    df_filtered = df_filtered[df_filtered['irn_mid_nm'] == filter_mid]
+                if filter_sml != '전체' and 'irn_sml_nm' in df_filtered.columns:
+                    df_filtered = df_filtered[df_filtered['irn_sml_nm'] == filter_sml]
+                
+                st.session_state.df_filtered = df_filtered
+                st.session_state.filter_applied = True
+                st.success(f"✅ 필터 적용 완료: {len(df_filtered):,}행 (원본: {len(df_facility):,}행)")
+        
+        with col_btn2:
+            if st.button("🔄 필터 초기화", use_container_width=True):
+                if 'df_filtered' in st.session_state:
+                    del st.session_state.df_filtered
+                if 'filter_applied' in st.session_state:
+                    del st.session_state.filter_applied
+                st.success("✅ 필터가 초기화되었습니다")
+                st.rerun()
+    
+    # 필터된 데이터 사용
+    if 'df_filtered' in st.session_state and st.session_state.get('filter_applied', False):
+        df_work = st.session_state.df_filtered
+        st.info(f"🔍 필터링된 데이터 사용 중: {len(df_work):,}행")
+    else:
+        df_work = df_facility
+    
     sample_qs = {
         "Q1": "prod_wgt 평균은?",
         "Q2": "prod_wgt 일별 추이",
@@ -440,15 +561,15 @@ if df_facility is not None:
                 
                 # 날짜 컬럼 찾기
                 date_col = None
-                for col in df_facility.columns:
-                    if 'date' in col.lower() and pd.api.types.is_datetime64_any_dtype(df_facility[col]):
+                for col in df_work.columns:
+                    if 'date' in col.lower() and pd.api.types.is_datetime64_any_dtype(df_work[col]):
                         date_col = col
                         break
                 
                 # 파이차트가 아니고 시계열 분석일 때만 날짜 컬럼 필수
                 if not date_col and (wants_graph or is_time_series) and chart_type != "pie":
                     st.error("❌ 날짜 컬럼을 찾을 수 없습니다. 컬럼명에 'date'가 포함되어야 합니다.")
-                    log_error("ColumnNotFound", "날짜 컬럼 없음", f"사용 가능 컬럼: {df_facility.columns.tolist()}")
+                    log_error("ColumnNotFound", "날짜 컬럼 없음", f"사용 가능 컬럼: {df_work.columns.tolist()}")
                 
                 # 분석 컬럼 찾기
                 mentioned_col = None
@@ -465,7 +586,7 @@ if df_facility is not None:
                 # 그룹 컬럼 찾기
                 group_col = None
                 if is_multi_series:
-                    cat_cols = df_facility.select_dtypes(include=['object']).columns
+                    cat_cols = df_work.select_dtypes(include=['object']).columns
                     for col in cat_cols:
                         if col in user_question_lower:
                             group_col = col
@@ -475,7 +596,7 @@ if df_facility is not None:
                 if (wants_graph or is_time_series) and date_col and mentioned_col:
                     
                     # 데이터 복사
-                    temp_df = df_facility.copy()
+                    temp_df = df_work.copy()
                     
                     # 이상치 제거
                     outlier_info = None
@@ -487,7 +608,7 @@ if df_facility is not None:
                         )
                         
                         if removed_count > 0:
-                            st.success(f"✅ 이상치 제거 완료: {removed_count:,}개 행 제거 ({removed_count/len(df_facility)*100:.1f}%)")
+                            st.success(f"✅ 이상치 제거 완료: {removed_count:,}개 행 제거 ({removed_count/len(df_work)*100:.1f}%)")
                         else:
                             st.info("ℹ️ 제거된 이상치가 없습니다.")
                     
@@ -614,14 +735,14 @@ if df_facility is not None:
                             process_steps = f"""
 **1단계: 원본 데이터 로드**
 - 파일: CSV 업로드 또는 샘플 데이터
-- 행 수: {len(df_facility):,}개
+- 행 수: {len(df_work):,}개
 - 날짜 컬럼: `{date_col}`
 - 분석 컬럼: `{mentioned_col}`
 - 그룹 컬럼: `{group_col}`
 
 **2단계: 이상치 제거** {'✅ 적용됨' if use_outlier_removal else '❌ 적용 안 됨'}
 {f"- 방법: {outlier_method}" if use_outlier_removal else ""}
-{f"- 제거된 행: {removed_count:,}개 ({removed_count/len(df_facility)*100:.1f}%)" if use_outlier_removal and removed_count > 0 else ""}
+{f"- 제거된 행: {removed_count:,}개 ({removed_count/len(df_work)*100:.1f}%)" if use_outlier_removal and removed_count > 0 else ""}
 {f"- 남은 행: {len(temp_df):,}개" if use_outlier_removal else ""}
 
 **3단계: 시간 단위 변환**
@@ -932,17 +1053,38 @@ print(f"피벗 테이블: {{len(pivot_table)}}행 × {{len(pivot_table.columns)}
 print(pivot_table)
 """
                         
-                        add_to_full_history(
-                            question=user_question,
-                            result_type=f"계열별_{time_unit_kr}_추이",
-                            figure=fig,
-                            data=multi,
-                            insights=insights_text,
-                            code=multi_code,
-                            data_code=multi_data_code,
-                            chart_type=chart_type_kr,
-                            time_unit=time_unit_kr
-                        )
+                        # 결과를 세션에 임시 저장
+                        st.session_state.last_analysis = {
+                            'question': user_question,
+                            'result_type': f"계열별_{time_unit_kr}_추이",
+                            'figure': fig,
+                            'data': multi,
+                            'insights': insights_text,
+                            'code': multi_code,
+                            'data_code': multi_data_code,
+                            'chart_type': chart_type_kr,
+                            'time_unit': time_unit_kr
+                        }
+                        
+                        # 저장 버튼
+                        st.divider()
+                        col_save1, col_save2, col_save3 = st.columns([2, 1, 2])
+                        with col_save2:
+                            if st.button("💾 히스토리에 저장", type="primary", use_container_width=True, key="save_multi"):
+                                add_to_full_history(
+                                    question=st.session_state.last_analysis['question'],
+                                    result_type=st.session_state.last_analysis['result_type'],
+                                    figure=st.session_state.last_analysis['figure'],
+                                    data=st.session_state.last_analysis['data'],
+                                    insights=st.session_state.last_analysis['insights'],
+                                    code=st.session_state.last_analysis['code'],
+                                    data_code=st.session_state.last_analysis['data_code'],
+                                    chart_type=st.session_state.last_analysis['chart_type'],
+                                    time_unit=st.session_state.last_analysis['time_unit']
+                                )
+                                st.success("✅ 히스토리에 저장되었습니다!")
+                                st.balloons()
+
                     
                     else:
                         # === 단일 계열 분석 ===
@@ -998,13 +1140,13 @@ print(pivot_table)
                             process_steps = f"""
 **1단계: 원본 데이터 로드**
 - 파일: CSV 업로드 또는 샘플 데이터
-- 행 수: {len(df_facility):,}개
+- 행 수: {len(df_work):,}개
 - 날짜 컬럼: `{date_col}`
 - 분석 컬럼: `{mentioned_col}`
 
 **2단계: 이상치 제거** {'✅ 적용됨' if use_outlier_removal else '❌ 적용 안 됨'}
 {f"- 방법: {outlier_method}" if use_outlier_removal else ""}
-{f"- 제거된 행: {removed_count:,}개 ({removed_count/len(df_facility)*100:.1f}%)" if use_outlier_removal and removed_count > 0 else ""}
+{f"- 제거된 행: {removed_count:,}개 ({removed_count/len(df_work)*100:.1f}%)" if use_outlier_removal and removed_count > 0 else ""}
 {f"- 남은 행: {len(temp_df):,}개" if use_outlier_removal else ""}
 
 **3단계: 시간 단위 변환**
@@ -1325,17 +1467,38 @@ print(f"시간별 집계: {{len(time_data):,}}행")
 print(time_data)
 """
                         
-                        add_to_full_history(
-                            question=user_question,
-                            result_type=f"{time_unit_kr}_추이",
-                            figure=fig,
-                            data=time_data,
-                            insights=insights_text,
-                            code=single_code,
-                            data_code=single_data_code,
-                            chart_type=chart_type_kr,
-                            time_unit=time_unit_kr
-                        )
+                        # 결과를 세션에 임시 저장
+                        st.session_state.last_analysis = {
+                            'question': user_question,
+                            'result_type': f"{time_unit_kr}_추이",
+                            'figure': fig,
+                            'data': time_data,
+                            'insights': insights_text,
+                            'code': single_code,
+                            'data_code': single_data_code,
+                            'chart_type': chart_type_kr,
+                            'time_unit': time_unit_kr
+                        }
+                        
+                        # 저장 버튼
+                        st.divider()
+                        col_save1, col_save2, col_save3 = st.columns([2, 1, 2])
+                        with col_save2:
+                            if st.button("💾 히스토리에 저장", type="primary", use_container_width=True, key="save_single"):
+                                add_to_full_history(
+                                    question=st.session_state.last_analysis['question'],
+                                    result_type=st.session_state.last_analysis['result_type'],
+                                    figure=st.session_state.last_analysis['figure'],
+                                    data=st.session_state.last_analysis['data'],
+                                    insights=st.session_state.last_analysis['insights'],
+                                    code=st.session_state.last_analysis['code'],
+                                    data_code=st.session_state.last_analysis['data_code'],
+                                    chart_type=st.session_state.last_analysis['chart_type'],
+                                    time_unit=st.session_state.last_analysis['time_unit']
+                                )
+                                st.success("✅ 히스토리에 저장되었습니다!")
+                                st.balloons()
+
                 
                 # === 우선순위 1.5: 파이차트 (시계열 아님) ===
                 elif chart_type == "pie" and wants_graph:
@@ -1425,7 +1588,7 @@ print(time_data)
                                         return f"{group_names[-1]}그룹"
                                 
                                 # 범위 그룹 생성
-                                df_copy = df_facility.copy()
+                                df_copy = df_work.copy()
                                 df_copy['range_group'] = df_copy[value_col].apply(assign_group)
                                 
                                 # 그룹별 개수 계산
@@ -1571,7 +1734,7 @@ fig.show()
                         if value_col:
                             try:
                                 # 범위 기반 그룹 생성
-                                df_copy = df_facility.copy()
+                                df_copy = df_work.copy()
                                 df_copy['range_group'] = df_copy[value_col].apply(
                                     lambda x: f'{threshold} 이하' if x <= threshold else f'{threshold} 초과'
                                 )
@@ -1701,7 +1864,7 @@ fig.show()
                     else:
                         # 범주형 컬럼 찾기
                         cat_col = None
-                        cat_cols = df_facility.select_dtypes(include=['object']).columns.tolist()
+                        cat_cols = df_work.select_dtypes(include=['object']).columns.tolist()
                         
                         for col in cat_cols:
                             if col in user_question_lower:
@@ -1730,7 +1893,7 @@ fig.show()
                                 # === 개수 기반 파이차트 ===
                                 if use_count_based:
                                     # 범주별 개수 계산
-                                    pie_data = df_facility[cat_col].value_counts().reset_index()
+                                    pie_data = df_work[cat_col].value_counts().reset_index()
                                     pie_data.columns = [cat_col, '개수']
                                     
                                     # 파이차트 생성
@@ -1801,7 +1964,7 @@ fig.show()
                                 # === 값 기반 파이차트 ===
                                 else:
                                     # 범주별 합계 계산
-                                    pie_data = df_facility.groupby(cat_col)[value_col].sum().reset_index()
+                                    pie_data = df_work.groupby(cat_col)[value_col].sum().reset_index()
                                     pie_data.columns = [cat_col, f'{value_col}_합계']
                                     
                                     # 파이차트 생성
@@ -1899,23 +2062,23 @@ fig.show()
                 
                 # === 우선순위 2: 간단한 통계 ===
                 elif "행" in user_question or "row" in user_question_lower:
-                    result = f"📊 데이터 행 수: **{len(df_facility):,}개**"
+                    result = f"📊 데이터 행 수: **{len(df_work):,}개**"
                     st.success(result)
                     add_to_full_history(user_question, "통계", insights=result, chart_type="N/A", time_unit="N/A")
                 
                 elif "컬럼" in user_question and not wants_graph:
-                    result = f"📋 컬럼: {', '.join(df_facility.columns.tolist())}"
+                    result = f"📋 컬럼: {', '.join(df_work.columns.tolist())}"
                     st.success(result)
                     add_to_full_history(user_question, "통계", insights=result, chart_type="N/A", time_unit="N/A")
                 
                 elif "평균" in user_question and mentioned_col and not wants_graph and not is_time_series:
-                    avg = df_facility[mentioned_col].mean()
+                    avg = df_work[mentioned_col].mean()
                     result = f"📊 {mentioned_col} 평균: **{avg:,.2f}**"
                     st.success(result)
                     add_to_full_history(user_question, "통계", insights=result, chart_type="N/A", time_unit="N/A")
                 
                 elif "결측치" in user_question:
-                    null_cols = df_facility.isnull().sum()
+                    null_cols = df_work.isnull().sum()
                     null_cols = null_cols[null_cols > 0]
                     if len(null_cols) > 0:
                         st.write("**결측치가 있는 컬럼:**")
