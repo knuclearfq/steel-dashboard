@@ -1819,7 +1819,7 @@ fig.show()
                                 group2_cnt = range_counts[range_counts['범위'] == f'{threshold} 초과']['개수'].values[0] if f'{threshold} 초과' in range_counts['범위'].values else 0
                                 
                                 insights_text = f"""
-**🎯 범위별 분포 인사이트:**
+범위별 분포 인사이트:
 - 전체 데이터: {total:,}개
 - {threshold} 이하: {group1_cnt:,}개 ({group1_cnt/total*100:.1f}%)
 - {threshold} 초과: {group2_cnt:,}개 ({group2_cnt/total*100:.1f}%)
